@@ -61,7 +61,7 @@
     const PARTICLE_COUNT = 35000;
     const IMAGE_URL = 'image_0.png'; 
     
-    let renderer, scene, camera, particleSystem, uniforms, handTracker;
+    let renderer, scene, camera, particleSystem, handTracker;
     let handMarker; 
     let isFist = false;
     let handPosition = new THREE.Vector3(9999, 9999, 0); 
@@ -165,13 +165,13 @@
                             
                             // SUPER INTERACTION LOGIC
                             float dist = distance(finalPos, uHandPos);
-                            float radius = 180.0; // HUGE RADIUS (Was 60)
+                            float radius = 180.0; // HUGE RADIUS
                             
                             vec3 col = mix(vec3(1.0,0.0,0.5), vec3(1.0,0.5,0.0), aRandom);
 
                             if(dist < radius) {
                                 vec3 dir = normalize(finalPos - uHandPos);
-                                float force = (1.0 - dist / radius) * 200.0; // HUGE FORCE (Was 40)
+                                float force = (1.0 - dist / radius) * 200.0; // HUGE FORCE
                                 finalPos += dir * force;
                                 
                                 // Turn WHITE when touched
@@ -246,7 +246,8 @@
 
     function animate() {
         requestAnimationFrame(animate);
-        if(uniforms) {
+        // FIX: Check for particleSystem instead of 'uniforms'
+        if(particleSystem) {
             particleSystem.material.uniforms.uTime.value += 0.02;
             particleSystem.material.uniforms.uHandPos.value.copy(handPosition);
             particleSystem.material.uniforms.uIsFist.value = THREE.MathUtils.lerp(particleSystem.material.uniforms.uIsFist.value, isFist?1.0:0.0, 0.1);
