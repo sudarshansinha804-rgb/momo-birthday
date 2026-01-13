@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Momo's Birthday</title>
+    <title>Momo's Birthday V2</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Courier New', monospace; }
         canvas { display: block; width: 100vw; height: 100vh; }
@@ -26,6 +26,7 @@
             position: absolute; bottom: 10px; left: 10px;
             color: #0f0; font-size: 12px; pointer-events: none;
             max-width: 90%; word-wrap: break-word; z-index: 20;
+            text-shadow: 1px 1px 0 #000;
         }
         .error { color: #f00 !important; font-weight: bold; }
         #input_video { display: none; }
@@ -45,7 +46,9 @@
         <button id="startBtn">ENTER EXPERIENCE</button>
         <p style="color: #666; font-size: 12px;">(Allow Camera Access when asked)</p>
     </div>
-    <div id="console"></div>
+    
+    <div id="console">Initializing...</div>
+    
     <video id="input_video" playsinline></video>
     <canvas id="c"></canvas>
 
@@ -54,21 +57,33 @@
 
     const debugDiv = document.getElementById('console');
     function log(msg, isError = false) {
-        debugDiv.innerHTML += `<div class="${isError ? 'error' : ''}">> ${msg}</div>`;
+        // Only keep last 5 lines to prevent screen clutter
+        let lines = debugDiv.innerHTML.split('<br>');
+        if (lines.length > 5) lines.shift();
+        lines.push(`<span class="${isError ? 'error' : ''}">> ${msg}</span>`);
+        debugDiv.innerHTML = lines.join('<br>');
         if(isError) console.error(msg);
     }
 
     const PARTICLE_COUNT = 35000;
     const IMAGE_URL = 'image_0.png'; 
     
+    // --- GLOBAL VARIABLES ---
     let renderer, scene, camera, particleSystem, handTracker;
-    let handMarker; 
+    let handMarker;
     let isFist = false;
     let handPosition = new THREE.Vector3(9999, 9999, 0); 
+    
+    // --- THE FIX: GLOBAL UNIFORMS ---
+    // Defined here so 'animate' can ALWAYS see it.
+    const globalUniforms = {
+        uTime: { value: 0 },
+        uHandPos: { value: new THREE.Vector3(9999, 9999, 0) },
+        uIsFist: { value: 0.0 }
+    };
 
     document.getElementById('startBtn').addEventListener('click', async () => {
         document.getElementById('overlay').style.display = 'none';
-        log("Starting...");
         try { await init(); } catch (e) { log("ERROR: " + e.message, true); }
     });
 
@@ -76,19 +91,24 @@
         const canvas = document.querySelector('#c');
         renderer = new THREE.WebGLRenderer({ canvas, antialias: false });
         renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Fix for Mac Retina screens
         
         scene = new THREE.Scene();
         camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 1, 2000);
         camera.position.z = window.innerWidth < 600 ? 500 : 350;
 
-        // Red Dot (Visual Debugger)
+        // Red Dot Marker
         const markerGeo = new THREE.SphereGeometry(15, 16, 16);
         const markerMat = new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.6 });
         handMarker = new THREE.Mesh(markerGeo, markerMat);
         scene.add(handMarker);
 
+        log("Loading Particles...");
         await createParticleSystem(IMAGE_URL);
+        
+        log("Starting Camera...");
         setupMediaPipe();
+        
         animate();
     }
 
@@ -141,11 +161,7 @@
                 geometry.setAttribute('aRandom', new THREE.Float32BufferAttribute(randoms, 1));
 
                 const material = new THREE.ShaderMaterial({
-                    uniforms: {
-                        uTime: { value: 0 },
-                        uHandPos: { value: new THREE.Vector3(9999,9999,0) },
-                        uIsFist: { value: 0.0 }
-                    },
+                    uniforms: globalUniforms, // Using the GLOBAL variable
                     vertexShader: `
                         uniform float uTime;
                         uniform vec3 uHandPos;
@@ -163,18 +179,16 @@
                             vec3 noise = vec3(sin(uTime+aRandom*10.0), cos(uTime+aRandom*20.0), 0.0);
                             vec3 finalPos = targetPos + noise * (1.0 - morphFactor);
                             
-                            // SUPER INTERACTION LOGIC
+                            // INTERACTION
                             float dist = distance(finalPos, uHandPos);
-                            float radius = 180.0; // HUGE RADIUS
+                            float radius = 180.0; 
                             
                             vec3 col = mix(vec3(1.0,0.0,0.5), vec3(1.0,0.5,0.0), aRandom);
 
                             if(dist < radius) {
                                 vec3 dir = normalize(finalPos - uHandPos);
-                                float force = (1.0 - dist / radius) * 200.0; // HUGE FORCE
+                                float force = (1.0 - dist / radius) * 200.0; 
                                 finalPos += dir * force;
-                                
-                                // Turn WHITE when touched
                                 col = mix(col, vec3(1.0, 1.0, 1.0), (1.0 - dist/radius)); 
                             }
 
@@ -219,8 +233,6 @@
                 const landmarks = results.multiHandLandmarks[0];
                 const x = (1.0 - landmarks[8].x) * 2.0 - 1.0; 
                 const y = (1.0 - landmarks[8].y) * 2.0 - 1.0;
-                
-                // Map hand to screen space
                 handPosition.lerp(new THREE.Vector3(x * 300, y * 300, 0), 0.3);
                 
                 // Fist Check
@@ -246,13 +258,26 @@
 
     function animate() {
         requestAnimationFrame(animate);
-        // FIX: Check for particleSystem instead of 'uniforms'
-        if(particleSystem) {
-            particleSystem.material.uniforms.uTime.value += 0.02;
-            particleSystem.material.uniforms.uHandPos.value.copy(handPosition);
-            particleSystem.material.uniforms.uIsFist.value = THREE.MathUtils.lerp(particleSystem.material.uniforms.uIsFist.value, isFist?1.0:0.0, 0.1);
-        }
+        
+        // --- UNCONDITIONAL UPDATES ---
+        // We update the Global variable directly.
+        // This runs even if 'particleSystem' variable is somehow lost.
+        globalUniforms.uTime.value += 0.02;
+        globalUniforms.uHandPos.value.copy(handPosition);
+        globalUniforms.uIsFist.value = THREE.MathUtils.lerp(globalUniforms.uIsFist.value, isFist?1.0:0.0, 0.1);
+        
         if(handMarker) handMarker.position.copy(handPosition);
+        
+        // Force the whole scene to rotate slightly
+        // If the heart is NOT spinning, then the loop is dead.
+        if(scene) scene.rotation.y += 0.002;
+
+        // VISUAL DEBUG: Update screen with time
+        // If this number stops, we know the loop crashed.
+        if(Math.floor(globalUniforms.uTime.value * 10) % 20 === 0) {
+            debugDiv.innerHTML = "Simulation Time: " + globalUniforms.uTime.value.toFixed(1);
+        }
+
         renderer.render(scene, camera);
     }
 </script>
