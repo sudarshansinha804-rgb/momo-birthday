@@ -3,33 +3,28 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Momo's Birthday V2</title>
+    <title>For Momo</title>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Courier New', monospace; }
+        body { margin: 0; overflow: hidden; background-color: #000; font-family: sans-serif; }
         canvas { display: block; width: 100vw; height: 100vh; }
         
         #overlay {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.9);
+            background: rgba(0,0,0,0.95);
             display: flex; flex-direction: column; justify-content: center; align-items: center;
-            z-index: 10;
+            z-index: 10; color: #ff0055;
         }
         
         button {
-            padding: 15px 40px; font-size: 20px; background: transparent;
+            padding: 15px 40px; font-size: 18px; background: transparent;
             color: #ff0055; border: 2px solid #ff0055; cursor: pointer;
-            letter-spacing: 2px; transition: 0.3s; margin-bottom: 20px;
+            letter-spacing: 3px; transition: 0.3s; margin-top: 30px;
+            text-transform: uppercase;
         }
-        button:hover { background: #ff0055; color: white; }
+        button:hover { background: #ff0055; color: white; box-shadow: 0 0 20px #ff0055; }
         
-        #console {
-            position: absolute; bottom: 10px; left: 10px;
-            color: #0f0; font-size: 12px; pointer-events: none;
-            max-width: 90%; word-wrap: break-word; z-index: 20;
-            text-shadow: 1px 1px 0 #000;
-        }
-        .error { color: #f00 !important; font-weight: bold; }
         #input_video { display: none; }
+        #error-msg { position: absolute; bottom: 20px; color: red; font-size: 12px; display: none; }
     </style>
     
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
@@ -42,12 +37,11 @@
 <body>
 
     <div id="overlay">
-        <h2 style="color:white; margin-bottom: 30px;">FOR MOMO</h2>
-        <button id="startBtn">ENTER EXPERIENCE</button>
-        <p style="color: #666; font-size: 12px;">(Allow Camera Access when asked)</p>
+        <h1 style="font-weight: 100; letter-spacing: 5px;">HAPPY BIRTHDAY MOMO</h1>
+        <p style="color: #aaa; font-size: 14px; margin-top: -10px;">Make a wish & wave your hand.</p>
+        <button id="startBtn">Begin</button>
+        <div id="error-msg"></div>
     </div>
-    
-    <div id="console">Initializing...</div>
     
     <video id="input_video" playsinline></video>
     <canvas id="c"></canvas>
@@ -55,27 +49,19 @@
 <script type="module">
     import * as THREE from 'three';
 
-    const debugDiv = document.getElementById('console');
-    function log(msg, isError = false) {
-        // Only keep last 5 lines to prevent screen clutter
-        let lines = debugDiv.innerHTML.split('<br>');
-        if (lines.length > 5) lines.shift();
-        lines.push(`<span class="${isError ? 'error' : ''}">> ${msg}</span>`);
-        debugDiv.innerHTML = lines.join('<br>');
-        if(isError) console.error(msg);
+    function showError(msg) {
+        const errDiv = document.getElementById('error-msg');
+        errDiv.style.display = 'block';
+        errDiv.innerHTML = "Error: " + msg;
     }
 
     const PARTICLE_COUNT = 35000;
     const IMAGE_URL = 'image_0.png'; 
     
-    // --- GLOBAL VARIABLES ---
-    let renderer, scene, camera, particleSystem, handTracker;
-    let handMarker;
+    let renderer, scene, camera, handTracker;
     let isFist = false;
     let handPosition = new THREE.Vector3(9999, 9999, 0); 
     
-    // --- THE FIX: GLOBAL UNIFORMS ---
-    // Defined here so 'animate' can ALWAYS see it.
     const globalUniforms = {
         uTime: { value: 0 },
         uHandPos: { value: new THREE.Vector3(9999, 9999, 0) },
@@ -83,32 +69,25 @@
     };
 
     document.getElementById('startBtn').addEventListener('click', async () => {
-        document.getElementById('overlay').style.display = 'none';
-        try { await init(); } catch (e) { log("ERROR: " + e.message, true); }
+        document.getElementById('startBtn').innerHTML = "Loading...";
+        try { await init(); } catch (e) { showError(e.message); }
     });
 
     async function init() {
         const canvas = document.querySelector('#c');
         renderer = new THREE.WebGLRenderer({ canvas, antialias: false });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Fix for Mac Retina screens
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         
         scene = new THREE.Scene();
         camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 1, 2000);
         camera.position.z = window.innerWidth < 600 ? 500 : 350;
 
-        // Red Dot Marker
-        const markerGeo = new THREE.SphereGeometry(15, 16, 16);
-        const markerMat = new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.6 });
-        handMarker = new THREE.Mesh(markerGeo, markerMat);
-        scene.add(handMarker);
-
-        log("Loading Particles...");
         await createParticleSystem(IMAGE_URL);
         
-        log("Starting Camera...");
         setupMediaPipe();
         
+        document.getElementById('overlay').style.display = 'none';
         animate();
     }
 
@@ -118,7 +97,6 @@
             image.crossOrigin = "Anonymous";
             image.src = imageUrl;
             image.onload = () => {
-                log("Image Loaded.");
                 const imgCanvas = document.createElement('canvas');
                 const ctx = imgCanvas.getContext('2d');
                 imgCanvas.width = image.width;
@@ -161,7 +139,7 @@
                 geometry.setAttribute('aRandom', new THREE.Float32BufferAttribute(randoms, 1));
 
                 const material = new THREE.ShaderMaterial({
-                    uniforms: globalUniforms, // Using the GLOBAL variable
+                    uniforms: globalUniforms,
                     vertexShader: `
                         uniform float uTime;
                         uniform vec3 uHandPos;
@@ -179,37 +157,43 @@
                             vec3 noise = vec3(sin(uTime+aRandom*10.0), cos(uTime+aRandom*20.0), 0.0);
                             vec3 finalPos = targetPos + noise * (1.0 - morphFactor);
                             
-                            // INTERACTION
+                            // --- GENTLE INTERACTION LOGIC ---
                             float dist = distance(finalPos, uHandPos);
-                            float radius = 180.0; 
+                            // Reduced Radius (70) and Force (50) for gentle effect
+                            float radius = 70.0; 
                             
-                            vec3 col = mix(vec3(1.0,0.0,0.5), vec3(1.0,0.5,0.0), aRandom);
+                            // Default Heart Color (Warm Pink/Orange gradient)
+                            vec3 col = mix(vec3(1.0,0.1,0.5), vec3(1.0,0.6,0.1), aRandom);
 
                             if(dist < radius) {
                                 vec3 dir = normalize(finalPos - uHandPos);
-                                float force = (1.0 - dist / radius) * 200.0; 
+                                float force = (1.0 - dist / radius) * 50.0; 
                                 finalPos += dir * force;
-                                col = mix(col, vec3(1.0, 1.0, 1.0), (1.0 - dist/radius)); 
+                                // Turn bright white gently when touched
+                                col = mix(col, vec3(1.0, 1.0, 1.0), (1.0 - dist/radius)*0.8); 
                             }
 
                             vColor = mix(col, aColorImage, morphFactor);
                             
                             vec4 mvPosition = modelViewMatrix * vec4(finalPos, 1.0);
-                            gl_PointSize = 4.0 * (300.0 / -mvPosition.z);
+                            gl_PointSize = 3.5 * (300.0 / -mvPosition.z);
                             gl_Position = projectionMatrix * mvPosition;
                         }
                     `,
                     fragmentShader: `
                         varying vec3 vColor;
                         void main() {
-                            if(length(gl_PointCoord - 0.5) > 0.5) discard;
-                            gl_FragColor = vec4(vColor, 1.0);
+                            // Soft round particles
+                            float d = length(gl_PointCoord - 0.5);
+                            if(d > 0.5) discard;
+                            // Slight glow towards center
+                            gl_FragColor = vec4(vColor + (0.5-d)*0.5, 1.0);
                         }
                     `,
                     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
                 });
 
-                particleSystem = new THREE.Points(geometry, material);
+                const particleSystem = new THREE.Points(geometry, material);
                 scene.add(particleSystem);
                 resolve();
             };
@@ -253,30 +237,18 @@
             onFrame: async () => { await handTracker.send({image: videoElement}); },
             width: 640, height: 480
         });
-        cameraUtils.start().then(() => log("Camera Running"));
+        cameraUtils.start();
     }
 
     function animate() {
         requestAnimationFrame(animate);
         
-        // --- UNCONDITIONAL UPDATES ---
-        // We update the Global variable directly.
-        // This runs even if 'particleSystem' variable is somehow lost.
         globalUniforms.uTime.value += 0.02;
         globalUniforms.uHandPos.value.copy(handPosition);
         globalUniforms.uIsFist.value = THREE.MathUtils.lerp(globalUniforms.uIsFist.value, isFist?1.0:0.0, 0.1);
         
-        if(handMarker) handMarker.position.copy(handPosition);
-        
-        // Force the whole scene to rotate slightly
-        // If the heart is NOT spinning, then the loop is dead.
-        if(scene) scene.rotation.y += 0.002;
-
-        // VISUAL DEBUG: Update screen with time
-        // If this number stops, we know the loop crashed.
-        if(Math.floor(globalUniforms.uTime.value * 10) % 20 === 0) {
-            debugDiv.innerHTML = "Simulation Time: " + globalUniforms.uTime.value.toFixed(1);
-        }
+        // Slower, more romantic rotation speed
+        if(scene) scene.rotation.y += 0.001;
 
         renderer.render(scene, camera);
     }
