@@ -3,15 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>stylish Interactive Particle System</title>
+    <title>Momo's Particle Heart</title>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #000; }
+        body { margin: 0; overflow: hidden; background-color: #050505; }
         #c { display: block; width: 100vw; height: 100vh; }
-        /* Hide the webcam video element */
         #input_video { position: absolute; opacity: 0; pointer-events: none; }
         #loading {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            color: #fff; font-family: sans-serif; letter-spacing: 2px; pointer-events: none;
+            color: #ff0055; font-family: 'Courier New', sans-serif; font-size: 20px;
+            text-align: center; pointer-events: none;
         }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
@@ -20,137 +20,74 @@
     <script type="importmap">
         {
             "imports": {
-                "three": "https://unpkg.com/three@0.158.0/build/three.module.js",
-                "three/addons/": "https://unpkg.com/three@0.158.0/examples/jsm/"
+                "three": "https://unpkg.com/three@0.158.0/build/three.module.js"
             }
         }
     </script>
 </head>
 <body>
-    <div id="loading">INITIALIZING SYSTEMS...</div>
-    <video id="input_video"></video>
+    <div id="loading">INITIALIZING SYSTEM...<br><span style="font-size:12px; color:white;">(Please Allow Camera Access)</span></div>
+    <video id="input_video" playsinline></video>
     <canvas id="c"></canvas>
 
 <script type="module">
 import * as THREE from 'three';
-import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // --- CONFIGURATION ---
-const PARTICLE_COUNT = 64000; // Higher = denser image, needs decent GPU
-const IMAGE_URL = 'image_0.png'; // Ensure this file is in the same directory
-const PARTICLE_SIZE = 4.0;
+const PARTICLE_COUNT = 40000; // Lowered slightly for safety
+const IMAGE_URL = 'image_0.png'; 
+const PARTICLE_SIZE = 3.5;
 
-let renderer, scene, camera, composer;
+let renderer, scene, camera;
 let particleSystem, uniforms;
 let handTracker;
 let isFist = false;
-let handPosition = new THREE.Vector3(9999, 9999, 9999); // Start off-screen
+let handPosition = new THREE.Vector3(9999, 9999, 9999);
 
-// --- SHADERS (The "Intellect") ---
-
+// --- SHADERS ---
 const vertexShader = `
     uniform float uTime;
     uniform vec3 uHandPos;
-    uniform float uIsFist; // 0.0 = Open, 1.0 = Fist
-    uniform float uInteractStrength;
-
-    // Different target positions stored per particle
+    uniform float uIsFist;
+    
     attribute vec3 aTargetHeart;
     attribute vec3 aTargetImage;
     attribute vec3 aColorImage;
     attribute float aRandom;
-
+    
     varying vec3 vColor;
-    varying float vIsImageMode;
 
-    // Simplex Noise function for organic movement
-    vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
-    vec4 mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
-    vec4 permute(vec4 x) { return mod289(((x*34.0)+1.0)*x); }
-    vec4 taylorInvSqrt(vec4 r) { return 1.79284291400159 - 0.85373472095314 * r; }
-    float snoise(vec3 v) {
-        const vec2  C = vec2(1.0/6.0, 1.0/3.0) ;
-        const vec4  D = vec4(0.0, 0.5, 1.0, 2.0);
-        vec3 i  = floor(v + dot(v, C.yyy) );
-        vec3 x0 = v - i + dot(i, C.xxx) ;
-        vec3 g = step(x0.yzx, x0.xyz);
-        vec3 l = 1.0 - g;
-        vec3 i1 = min( g.xyz, l.zxy );
-        vec3 i2 = max( g.xyz, l.zxy );
-        vec3 x1 = x0 - i1 + C.xxx;
-        vec3 x2 = x0 - i2 + C.yyy; // 2.0*C.x = 1/3 = C.y
-        vec3 x3 = x0 - -0.577350269189626 + C.yyy; // -1.0+3.0*C.x = -0.5 = -D.y
-        i = mod289(i);
-        vec4 p = permute( permute( permute( i.z + vec4(0.0, i1.z, i2.z, 1.0 )) + i.y + vec4(0.0, i1.y, i2.y, 1.0 )) + i.x + vec4(0.0, i1.x, i2.x, 1.0 ));
-        float n_ = 0.142857142857; // 1.0/7.0
-        vec3  ns = n_ * D.wyz - D.xzx;
-        vec4 j = p - 49.0 * floor(p * ns.z * ns.z);  //  mod7(p)
-        vec4 x_ = floor(j * ns.z);
-        vec4 y_ = floor(j - 7.0 * x_ );    // mod7(j)
-        vec4 x = x_ *ns.x + ns.yyyy;
-        vec4 y = y_ *ns.x + ns.yyyy;
-        vec4 h = 1.0 - abs(x) - abs(y);
-        vec4 b0 = vec4( x.xy, y.xy );
-        vec4 b1 = vec4( x.zw, y.zw );
-        vec4 s0 = floor(b0)*2.0 + 1.0;
-        vec4 s1 = floor(b1)*2.0 + 1.0;
-        vec4 sh = -step(h, vec4(0.0));
-        vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy ;
-        vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww ;
-        vec3 p0 = vec3(a0.xy,h.x);
-        vec3 p1 = vec3(a0.zw,h.y);
-        vec3 p2 = vec3(a1.xy,h.z);
-        vec3 p3 = vec3(a1.zw,h.w);
-        vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2,p2), dot(p3,p3)));
-        p0 *= norm.x; p1 *= norm.y; p2 *= norm.z; p3 *= norm.w;
-        vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
-        m = m * m;
-        return 42.0 * dot( m*m, vec4( dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3) ) );
-    }
+    // Simple Noise
+    float random(vec2 st) { return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123); }
 
     void main() {
-        vIsImageMode = uIsFist;
-
-        // 1. Base Position: Morph between Heart and Image based on fist state
-        // Use smoothstep for a non-linear, stylish transition
         float morphFactor = smoothstep(0.0, 1.0, uIsFist);
         vec3 targetPos = mix(aTargetHeart, aTargetImage, morphFactor);
 
-        // 2. Add ambient noise movement (breathing effect)
-        float noiseScale = 0.02;
-        float timeScale = 0.5;
-        vec3 noisePos = vec3(
-            snoise(targetPos * noiseScale + uTime * timeScale + aRandom),
-            snoise(targetPos * noiseScale + uTime * timeScale + aRandom + 10.0),
-            snoise(targetPos * noiseScale + uTime * timeScale + aRandom + 20.0)
-        );
-        // Reduce noise influence when forming the image for sharpness
-        vec3 finalPos = targetPos + noisePos * (5.0 * (1.0 - morphFactor*0.8));
+        // Movement noise
+        vec3 noise = vec3(
+            sin(uTime * 0.5 + aRandom * 10.0),
+            cos(uTime * 0.3 + aRandom * 20.0),
+            sin(uTime * 0.7 + aRandom * 30.0)
+        ) * 2.0;
+        
+        vec3 finalPos = targetPos + noise;
 
-
-        // 3. Hand Interaction (Repulsion)
+        // Hand Interaction
         float dist = distance(finalPos, uHandPos);
-        float radius = 80.0; // Radius of hand influence
+        float radius = 60.0;
         if (dist < radius) {
             vec3 repulsionDir = normalize(finalPos - uHandPos);
-            // Stronger force closer to hand
-            float force = (1.0 - dist / radius) * uInteractStrength;
+            float force = (1.0 - dist / radius) * 40.0;
             finalPos += repulsionDir * force;
         }
 
-        // 4. Color Calculation
-        // Default Heart Color (Warm gradient) vs Image Color
-        vec3 heartColor = mix(vec3(1.0, 0.1, 0.3), vec3(1.0, 0.6, 0.1), aRandom);
+        // Color
+        vec3 heartColor = mix(vec3(1.0, 0.0, 0.4), vec3(1.0, 0.5, 0.0), aRandom);
         vColor = mix(heartColor, aColorImage, morphFactor);
 
-        // 5. Size calculation based on depth and state
         vec4 mvPosition = modelViewMatrix * vec4(finalPos, 1.0);
-        gl_PointSize = PARTICLE_SIZE * (300.0 / -mvPosition.z);
-        // Slightly smaller when forming image for detail
-        gl_PointSize *= mix(1.0, 0.7, morphFactor);
-
+        gl_PointSize = ${PARTICLE_SIZE.toFixed(1)} * (300.0 / -mvPosition.z);
         gl_Position = projectionMatrix * mvPosition;
     }
 `;
@@ -158,71 +95,62 @@ const vertexShader = `
 const fragmentShader = `
     varying vec3 vColor;
     void main() {
-        // Create a soft circle particle instead of a square
         float dist = length(gl_PointCoord - vec2(0.5));
         if (dist > 0.5) discard;
-        
-        // Soft edge
-        float alpha = smoothstep(0.5, 0.4, dist);
-
-        // Final color with some brightness boost for bloom
-        gl_FragColor = vec4(vColor * 1.5, alpha * 0.8);
+        gl_FragColor = vec4(vColor, 1.0);
     }
 `;
 
-
-// --- MAIN INITIALIZATION ---
-
 async function init() {
-    const canvas = document.querySelector('#c');
-    renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: "high-performance" });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Cap pixel ratio for performance
+    try {
+        const canvas = document.querySelector('#c');
+        // Basic renderer, removed Bloom for compatibility
+        renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
-    scene = new THREE.Scene();
-    camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 1, 2000);
-    camera.position.z = 500;
+        scene = new THREE.Scene();
+        camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 1, 2000);
+        // Responsive Camera Z
+        camera.position.z = window.innerWidth < 600 ? 600 : 400;
 
-    // --- Post Processing (Bloom for Style) ---
-    composer = new EffectComposer(renderer);
-    composer.addPass(new RenderPass(scene, camera));
-    // Threshold, Strength, Radius
-    const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.4, 1.5, 0.8);
-    composer.addPass(bloomPass);
+        await createParticleSystem(IMAGE_URL);
+        setupMediaPipe();
 
-    // --- Load Image & Create Particles ---
-    await createParticleSystem(IMAGE_URL);
+        window.addEventListener('resize', onWindowResize);
+        
+        // Hide loader ONLY after everything is ready
+        const loader = document.getElementById('loading');
+        loader.innerHTML = "SYSTEM READY.<br>WAVE HAND TO START.";
+        setTimeout(() => { loader.style.display = 'none'; }, 2000);
+        
+        animate();
 
-    // --- Start Hand Tracking ---
-    setupMediaPipe();
-
-    // --- Event Listeners ---
-    window.addEventListener('resize', onWindowResize);
-    document.getElementById('loading').style.display = 'none';
-    
-    animate();
+    } catch (error) {
+        alert("ERROR: " + error.message);
+        console.error(error);
+    }
 }
-
-// --- PARTICLE SYSTEM CREATION ---
 
 async function createParticleSystem(imageUrl) {
     const image = new Image();
+    image.crossOrigin = "Anonymous"; // Fix for some image loading issues
     image.src = imageUrl;
-    await image.decode();
+    
+    await image.decode().catch(err => { throw new Error("Could not load image_0.png. Check filename!"); });
 
-    // 1. Analyze Image Data to get target positions and colors
     const imgCanvas = document.createElement('canvas');
-    const ctx = imgCanvas.getContext('2d', { willReadFrequently: true });
+    const ctx = imgCanvas.getContext('2d');
     imgCanvas.width = image.width;
     imgCanvas.height = image.height;
     ctx.drawImage(image, 0, 0);
     const imgData = ctx.getImageData(0, 0, image.width, image.height);
 
-    // We need to sample points distributed across the image.
-    // A simple grid sample works best to maintain the structure.
+    const positions = [];
     const imagePositions = [];
     const imageColors = [];
-    
-    // Calculate grid dimensions to fit PARTICLE_COUNT
+    const randoms = [];
+
     const ratio = image.width / image.height;
     const gridY = Math.sqrt(PARTICLE_COUNT / ratio);
     const gridX = gridY * ratio;
@@ -230,62 +158,46 @@ async function createParticleSystem(imageUrl) {
     const stepY = image.height / gridY;
 
     for (let i = 0; i < PARTICLE_COUNT; i++) {
-        // Map index to 2D image grid coordinate
+        // Image Data
         const gx = (i % Math.floor(gridX));
         const gy = Math.floor(i / Math.floor(gridX));
-        
         const pixelX = Math.floor(gx * stepX);
         const pixelY = Math.floor(gy * stepY);
         const pixelIndex = (pixelY * image.width + pixelX) * 4;
 
-        // Position: Map image coordinates (0 to width) to 3D world space centered at 0
-        const scale = 0.5; // Adjust scale of final image in 3D space
-        imagePositions.push((pixelX - image.width / 2) * scale);
-        imagePositions.push(-(pixelY - image.height / 2) * scale); // Flip Y for 3D
-        imagePositions.push(0); // Flat image on Z axis
+        if(pixelIndex < imgData.data.length) {
+            imagePositions.push((pixelX - image.width/2) * 0.5);
+            imagePositions.push(-(pixelY - image.height/2) * 0.5);
+            imagePositions.push(0);
+            
+            imageColors.push(imgData.data[pixelIndex] / 255);
+            imageColors.push(imgData.data[pixelIndex + 1] / 255);
+            imageColors.push(imgData.data[pixelIndex + 2] / 255);
+        } else {
+             imagePositions.push(0,0,0); imageColors.push(0,0,0);
+        }
 
-        // Color: Normalize 0-255 to 0.0-1.0
-        imageColors.push(imgData.data[pixelIndex] / 255);
-        imageColors.push(imgData.data[pixelIndex + 1] / 255);
-        imageColors.push(imgData.data[pixelIndex + 2] / 255);
-    }
-
-
-    // 2. Generate Heart Shape Positions
-    const heartPositions = [];
-    const randoms = [];
-    for (let i = 0; i < PARTICLE_COUNT; i++) {
-        // Parametric Heart Equations
+        // Heart Data
         const t = Math.random() * Math.PI * 2;
-        // Distribute points inside the volume slightly
-        const r = Math.pow(Math.random(), 0.3) * 10.0; // Radius scale
-
+        const r = Math.pow(Math.random(), 0.3) * 10.0;
         let x = 16 * Math.pow(Math.sin(t), 3);
-        let y = 13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t);
-        let z = (Math.random() - 0.5) * 10.0; // Give it some thickness
-
-        heartPositions.push(x * r);
-        heartPositions.push(y * r);
-        heartPositions.push(z * r);
-
-        randoms.push(Math.random()); // For noise offsets
+        let y = 13 * Math.cos(t) - 5 * Math.cos(2*t) - 2*Math.cos(3*t) - Math.cos(4*t);
+        let z = (Math.random() - 0.5) * 10.0;
+        positions.push(x * r, y * r, z * r);
+        randoms.push(Math.random());
     }
 
-    // 3. Build Geometry
     const geometry = new THREE.BufferGeometry();
-    // We use the heart positions as the initial 'position' attribute just for initialization
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(heartPositions, 3));
-    geometry.setAttribute('aTargetHeart', new THREE.Float32BufferAttribute(heartPositions, 3));
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geometry.setAttribute('aTargetHeart', new THREE.Float32BufferAttribute(positions, 3));
     geometry.setAttribute('aTargetImage', new THREE.Float32BufferAttribute(imagePositions, 3));
     geometry.setAttribute('aColorImage', new THREE.Float32BufferAttribute(imageColors, 3));
     geometry.setAttribute('aRandom', new THREE.Float32BufferAttribute(randoms, 1));
 
-    // 4. Build Material
     uniforms = {
         uTime: { value: 0 },
-        uHandPos: { value: new THREE.Vector3(0, 0, 0) },
-        uIsFist: { value: 0.0 },
-        uInteractStrength: { value: 50.0 }
+        uHandPos: { value: new THREE.Vector3(9999, 9999, 9999) },
+        uIsFist: { value: 0.0 }
     };
 
     const material = new THREE.ShaderMaterial({
@@ -294,109 +206,75 @@ async function createParticleSystem(imageUrl) {
         fragmentShader: fragmentShader,
         transparent: true,
         depthWrite: false,
-        blending: THREE.AdditiveBlending // Additive blending for glowing look
+        blending: THREE.AdditiveBlending
     });
 
     particleSystem = new THREE.Points(geometry, material);
     scene.add(particleSystem);
 }
 
-// --- MEDIAPIPE HAND TRACKING SETUP ---
-
 function setupMediaPipe() {
     const videoElement = document.getElementById('input_video');
-    handTracker = new Hands({locateFile: (file) => {
-        return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
-    }});
-
+    handTracker = new Hands({locateFile: (file) => \`https://cdn.jsdelivr.net/npm/@mediapipe/hands/\${file}\`});
+    
     handTracker.setOptions({
         maxNumHands: 1,
-        modelComplexity: 1,
-        minDetectionConfidence: 0.6,
-        minTrackingConfidence: 0.6
+        modelComplexity: 0, // Faster
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5
     });
 
-    handTracker.onResults(onHandsResults);
+    handTracker.onResults((results) => {
+        if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+            const landmarks = results.multiHandLandmarks[0];
+            const x = (1.0 - landmarks[8].x) * 2.0 - 1.0; 
+            const y = (1.0 - landmarks[8].y) * 2.0 - 1.0;
+            const z = -landmarks[8].z * 2.0; 
+            
+            // Adjust sensitivity for interaction
+            handPosition.lerp(new THREE.Vector3(x * 300, y * 300, z * 100), 0.3);
+
+            // Fist detection
+            const wrist = landmarks[0];
+            const tips = [8, 12, 16, 20];
+            let rolled = 0;
+            tips.forEach(tipIdx => {
+                const tip = landmarks[tipIdx];
+                const d = Math.sqrt(Math.pow(tip.x - wrist.x, 2) + Math.pow(tip.y - wrist.y, 2));
+                if (d < 0.25) rolled++; 
+            });
+            isFist = rolled >= 3;
+        } else {
+            handPosition.lerp(new THREE.Vector3(9999, 9999, 9999), 0.1);
+            isFist = false;
+        }
+    });
 
     const cameraUtils = new Camera(videoElement, {
-        onFrame: async () => {
-            await handTracker.send({image: videoElement});
-        },
-        width: 640, // Process at lower resolution for speed
-        height: 480
+        onFrame: async () => { await handTracker.send({image: videoElement}); },
+        width: 640, height: 480
     });
     cameraUtils.start();
 }
 
-function onHandsResults(results) {
-    if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-        const landmarks = results.multiHandLandmarks[0];
-        
-        // 1. Calculate Hand Position in 3D World Space
-        // Index finger tip is usually a good interaction point (landmark 8)
-        // Map normalized coordinates (0.0 - 1.0) to our 3D view range based on camera Z
-        // Note: Webcam X is mirrored.
-        const x = (1.0 - landmarks[8].x) * 2.0 - 1.0; 
-        const y = (1.0 - landmarks[8].y) * 2.0 - 1.0;
-        // Simple depth approximation based on hand size in frame
-        const z = -landmarks[8].z * 2.0; 
-
-        // Smoothly interpolate hand position to prevent jitter
-        handPosition.lerp(new THREE.Vector3(x * 250, y * 250, z * 100), 0.2);
-
-
-        // 2. Detect Fist Gesture
-        // Check distance between finger tips (8,12,16,20) and wrist (0)
-        const wrist = landmarks[0];
-        const tips = [8, 12, 16, 20];
-        let rolledFingers = 0;
-        tips.forEach(tipIdx => {
-            const tip = landmarks[tipIdx];
-            const dist = Math.sqrt(Math.pow(tip.x - wrist.x, 2) + Math.pow(tip.y - wrist.y, 2));
-            // Threshold for "curled" finger based on normalized coords
-            if (dist < 0.35) rolledFingers++; 
-        });
-        
-        // If most fingers are close to wrist, it's a fist
-        isFist = rolledFingers >= 3;
-
-    } else {
-        // Move interact point away if no hand detected
-        handPosition.lerp(new THREE.Vector3(9999, 9999, 9999), 0.1);
-        isFist = false;
-    }
-}
-
-// --- ANIMATION LOOP ---
-
 function animate() {
     requestAnimationFrame(animate);
-
     if (uniforms) {
-        // Update uniforms
         uniforms.uTime.value += 0.01;
         uniforms.uHandPos.value.copy(handPosition);
-        // Smoothly transition the fist state uniform
         uniforms.uIsFist.value = THREE.MathUtils.lerp(uniforms.uIsFist.value, isFist ? 1.0 : 0.0, 0.1);
-        
-        // Slight overall rotation for style
-        if(particleSystem) particleSystem.rotation.y += 0.001;
+        scene.rotation.y += 0.001;
     }
-
-    // Use composer instead of renderer for bloom effect
-    composer.render();
+    renderer.render(scene, camera);
 }
 
 function onWindowResize() {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
-    composer.setSize(window.innerWidth, window.innerHeight);
 }
 
-// Start the application
 init();
-
 </script>
 </body>
 </html>
