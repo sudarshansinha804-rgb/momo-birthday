@@ -38,7 +38,7 @@
 
     <div id="overlay">
         <h1 style="font-weight: 100; letter-spacing: 5px;">HAPPY BIRTHDAY MOMO</h1>
-        <p style="color: #aaa; font-size: 14px; margin-top: -10px;">Raise your hand to reveal.</p>
+        <p style="color: #aaa; font-size: 14px; margin-top: -10px;">Catch the stars & make a fist.</p>
         <button id="startBtn">Begin</button>
         <div id="error-msg"></div>
     </div>
@@ -62,6 +62,7 @@
     
     // Logic Flags
     let handDetected = false;
+    let isFist = false;
     let targetRotation = 0;
     
     const globalUniforms = {
@@ -202,7 +203,7 @@
                             // 1. Cycle Patterns
                             vec3 patternPos = getPatternPos(uCycle);
 
-                            // 2. Morph to Image based on Hand Presence
+                            // 2. Morph to Image based on FIST state (uMorphFactor)
                             float morph = smoothstep(0.0, 1.0, uMorphFactor);
                             vec3 finalPos = mix(patternPos, aTargetImage, morph);
                             
@@ -256,26 +257,26 @@
                 handDetected = true;
                 const landmarks = results.multiHandLandmarks[0];
                 
-                // --- WRIST TWIST CALCULATION ---
-                // We use Index MCP (5) and Pinky MCP (17) to calculate roll
-                const p1 = landmarks[5];
-                const p2 = landmarks[17];
-                
-                // Calculate angle in 2D plane (XY)
-                // Note: Webcam X is inverted, so we handle signs carefully
+                // --- WRIST ROTATION ---
+                const p1 = landmarks[5];  // Index Knuckle
+                const p2 = landmarks[17]; // Pinky Knuckle
                 const dx = p2.x - p1.x;
                 const dy = p2.y - p1.y;
-                
-                // Calculate twist angle
-                // Normalize it so flat hand = 0
                 const angle = Math.atan2(dy, dx);
-                
-                // Smoothing the rotation (Lerp)
-                // We multiply by a factor to make it responsive
                 targetRotation = -angle * 2.0; 
+
+                // --- FIST DETECTION ---
+                const tips = [8,12,16,20];
+                let rolled = 0;
+                tips.forEach(t => {
+                    const d = Math.sqrt(Math.pow(landmarks[t].x - landmarks[0].x, 2) + Math.pow(landmarks[t].y - landmarks[0].y, 2));
+                    if(d < 0.35) rolled++; 
+                });
+                isFist = rolled >= 3;
 
             } else {
                 handDetected = false;
+                isFist = false;
             }
         });
 
@@ -291,22 +292,22 @@
         
         globalUniforms.uTime.value += 0.02;
         
-        // Cycle Patterns only if Hand is NOT detected
+        // LOGIC:
+        // 1. If Hand Detected -> STOP Cycle, Follow Wrist Rotation.
+        // 2. If No Hand -> Auto Cycle, Auto Rotate.
+        
         if (!handDetected) {
-            globalUniforms.uCycle.value += 0.005; 
-            // Auto rotate slowly if no hand
-            if(scene) scene.rotation.y += 0.001; 
+            globalUniforms.uCycle.value += 0.005; // Auto Cycle
+            if(scene) scene.rotation.y += 0.001; // Auto Rotate
         } else {
-            // Hand Detected: Apply Wrist Rotation
-            // We align 0 rotation to roughly "palm vertical" or adjusted offset
+            // Hand is present: Smoothly match wrist rotation
             if(scene) {
-                 // Smoothly rotate towards wrist angle
                  scene.rotation.y += (targetRotation - scene.rotation.y) * 0.1;
             }
         }
 
-        // Morph Logic: Detected = 1 (Image), Not Detected = 0 (Patterns)
-        globalUniforms.uMorphFactor.value = THREE.MathUtils.lerp(globalUniforms.uMorphFactor.value, handDetected?1.0:0.0, 0.1);
+        // Morph Logic: ONLY morph if FIST is true
+        globalUniforms.uMorphFactor.value = THREE.MathUtils.lerp(globalUniforms.uMorphFactor.value, isFist?1.0:0.0, 0.1);
 
         renderer.render(scene, camera);
     }
