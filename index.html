@@ -1,3 +1,17 @@
+This is the final, streamlined version.
+
+I have completely removed the **Black Hole** phase. The animation loop is now a smooth, continuous cycle of 4 stages:
+
+1. **Heart** (Love)
+2. **Saturn** (Cosmos)
+3. **Flower** (Beauty)
+4. **Big Bang** (Expansion)
+
+The "darkening" effect is gone, so the particles will remain bright and vibrant 100% of the time.
+
+**Update your `index.html` on GitHub with this code:**
+
+```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -10,7 +24,7 @@
         
         #overlay {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.9); /* Slightly more transparent for space view */
+            background: rgba(0,0,0,0.9);
             display: flex; flex-direction: column; justify-content: center; align-items: center;
             z-index: 10; color: #ff0055;
         }
@@ -57,7 +71,6 @@
 
     const PARTICLE_COUNT = 65000;
     const IMAGE_URL = 'image_0.png'; 
-    // High-res cosmic background URL
     const SPACE_BG_URL = 'https://assets.codepen.io/127738/milky-way-2695569_1920.jpg';
     
     let renderer, scene, camera, handTracker;
@@ -79,20 +92,17 @@
 
     async function init() {
         const canvas = document.querySelector('#c');
-        // Enabled logarithmicDepthBuffer for better rendering of distant stars vs close particles
         renderer = new THREE.WebGLRenderer({ canvas, antialias: false, logarithmicDepthBuffer: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         
         scene = new THREE.Scene();
         
-        // --- ADDING COSMIC BACKGROUND ---
         const textureLoader = new THREE.TextureLoader();
         const bgTexture = textureLoader.load(SPACE_BG_URL);
-        bgTexture.colorSpace = THREE.SRGBColorSpace; // Ensure correct colors
+        bgTexture.colorSpace = THREE.SRGBColorSpace;
         scene.background = bgTexture;
 
-        // Add subtle fog to blend distant particles into darkness
         scene.fog = new THREE.FogExp2(0x000000, 0.0005);
 
         camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 1, 5000);
@@ -119,8 +129,8 @@
                 ctx.drawImage(image, 0, 0);
                 const imgData = ctx.getImageData(0, 0, image.width, image.height);
 
-                const posHeart = [], posSaturn = [], posFlower = [], posExpand = [], posBlackHole = [], posImage = [];
-                const colHeart = [], colSaturn = [], colFlower = [], colExpand = [], colBlackHole = [], colImage = [];
+                const posHeart = [], posSaturn = [], posFlower = [], posExpand = [], posImage = [];
+                const colHeart = [], colSaturn = [], colFlower = [], colExpand = [], colImage = [];
                 const randoms = [];
                 
                 const ratio = image.width / image.height;
@@ -139,7 +149,6 @@
                     // 1. IMAGE
                     if(pixelIndex < imgData.data.length) {
                         posImage.push((pixelX - image.width/2) * 0.12, -(pixelY - image.height/2) * 0.12, 0);
-                        // Boosted image brightness slightly against dark background
                         colImage.push(imgData.data[pixelIndex]/255*1.3, imgData.data[pixelIndex+1]/255*1.3, imgData.data[pixelIndex+2]/255*1.3);
                     } else { 
                         posImage.push(0,0,0); 
@@ -193,36 +202,24 @@
                     posExpand.push(exR * Math.sin(exPhi) * Math.cos(exTheta), exR * Math.sin(exPhi) * Math.sin(exTheta), exR * Math.cos(exPhi));
                     colExpand.push(0.8, 0.9, 1.0); 
 
-                    // 6. BLACK HOLE
-                    const bhRadius = Math.pow(Math.random(), 0.5) * 180.0 + 10.0;
-                    const bhAngle = Math.random() * Math.PI * 2 * 4.0;
-                    const bhHeight = (Math.random() - 0.5) * bhRadius * 0.2;
-                    posBlackHole.push(bhRadius * Math.cos(bhAngle), bhHeight, bhRadius * Math.sin(bhAngle));
-                    const distRatio = bhRadius / 200.0;
-                    if(distRatio < 0.2) { colBlackHole.push(1.0, 1.0, 0.8); } 
-                    else if (distRatio < 0.5) { colBlackHole.push(1.0, 0.5, 0.0); } 
-                    else { colBlackHole.push(0.5, 0.1, 0.0); } 
-
                     randoms.push(Math.random());
                 }
 
                 const geometry = new THREE.BufferGeometry();
                 geometry.setAttribute('position', new THREE.Float32BufferAttribute(posHeart, 3));
                 
-                // Targets
+                // Targets (Removed Black Hole)
                 geometry.setAttribute('aTargetHeart', new THREE.Float32BufferAttribute(posHeart, 3));
                 geometry.setAttribute('aTargetSaturn', new THREE.Float32BufferAttribute(posSaturn, 3));
                 geometry.setAttribute('aTargetFlower', new THREE.Float32BufferAttribute(posFlower, 3));
                 geometry.setAttribute('aTargetExpand', new THREE.Float32BufferAttribute(posExpand, 3));
-                geometry.setAttribute('aTargetBlackHole', new THREE.Float32BufferAttribute(posBlackHole, 3));
                 geometry.setAttribute('aTargetImage', new THREE.Float32BufferAttribute(posImage, 3));
                 
-                // Colors
+                // Colors (Removed Black Hole)
                 geometry.setAttribute('aColorHeart', new THREE.Float32BufferAttribute(colHeart, 3));
                 geometry.setAttribute('aColorSaturn', new THREE.Float32BufferAttribute(colSaturn, 3));
                 geometry.setAttribute('aColorFlower', new THREE.Float32BufferAttribute(colFlower, 3));
                 geometry.setAttribute('aColorExpand', new THREE.Float32BufferAttribute(colExpand, 3));
-                geometry.setAttribute('aColorBlackHole', new THREE.Float32BufferAttribute(colBlackHole, 3));
                 geometry.setAttribute('aColorImage', new THREE.Float32BufferAttribute(colImage, 3));
 
                 geometry.setAttribute('aRandom', new THREE.Float32BufferAttribute(randoms, 1));
@@ -239,7 +236,6 @@
                         attribute vec3 aTargetSaturn;
                         attribute vec3 aTargetFlower;
                         attribute vec3 aTargetExpand;
-                        attribute vec3 aTargetBlackHole;
                         attribute vec3 aTargetImage;
                         
                         // Colors
@@ -247,30 +243,27 @@
                         attribute vec3 aColorSaturn;
                         attribute vec3 aColorFlower;
                         attribute vec3 aColorExpand;
-                        attribute vec3 aColorBlackHole;
                         attribute vec3 aColorImage;
 
                         attribute float aRandom;
                         varying vec3 vColor;
 
-                        // Position Mixer
+                        // Position Mixer (4 Stages)
                         vec3 getPatternPos(float cycle) {
-                            float stage = mod(cycle, 5.0);
+                            float stage = mod(cycle, 4.0);
                             if (stage < 1.0) return mix(aTargetHeart, aTargetSaturn, smoothstep(0.0, 1.0, stage));
                             else if (stage < 2.0) return mix(aTargetSaturn, aTargetFlower, smoothstep(0.0, 1.0, stage - 1.0));
-                            else if (stage < 3.0) return mix(aTargetFlower, aTargetBlackHole, smoothstep(0.0, 1.0, stage - 2.0));
-                            else if (stage < 4.0) return mix(aTargetBlackHole, aTargetExpand, smoothstep(0.0, 1.0, stage - 3.0));
-                            else return mix(aTargetExpand, aTargetHeart, smoothstep(0.0, 1.0, stage - 4.0));
+                            else if (stage < 3.0) return mix(aTargetFlower, aTargetExpand, smoothstep(0.0, 1.0, stage - 2.0));
+                            else return mix(aTargetExpand, aTargetHeart, smoothstep(0.0, 1.0, stage - 3.0));
                         }
 
-                        // Color Mixer
+                        // Color Mixer (4 Stages)
                         vec3 getPatternColor(float cycle) {
-                            float stage = mod(cycle, 5.0);
+                            float stage = mod(cycle, 4.0);
                             if (stage < 1.0) return mix(aColorHeart, aColorSaturn, smoothstep(0.0, 1.0, stage));
                             else if (stage < 2.0) return mix(aColorSaturn, aColorFlower, smoothstep(0.0, 1.0, stage - 1.0));
-                            else if (stage < 3.0) return mix(aColorFlower, aColorBlackHole, smoothstep(0.0, 1.0, stage - 2.0));
-                            else if (stage < 4.0) return mix(aColorBlackHole, aColorExpand, smoothstep(0.0, 1.0, stage - 3.0));
-                            else return mix(aColorExpand, aColorHeart, smoothstep(0.0, 1.0, stage - 4.0));
+                            else if (stage < 3.0) return mix(aColorFlower, aColorExpand, smoothstep(0.0, 1.0, stage - 2.0));
+                            else return mix(aColorExpand, aColorHeart, smoothstep(0.0, 1.0, stage - 3.0));
                         }
 
                         void main() {
@@ -279,11 +272,9 @@
                             float morph = smoothstep(0.0, 1.0, uMorphFactor);
                             vec3 finalPos = mix(patternPos, aTargetImage, morph);
                             
-                            // Noise
-                            float bhPhase = smoothstep(0.0, 0.5, abs(mod(uCycle, 5.0) - 3.5));
-                            float noiseAmp = 1.0 - bhPhase * 0.9; 
+                            // Standard Noise
                             vec3 noise = vec3(sin(uTime + aRandom*10.0), cos(uTime + aRandom*20.0), 0.0);
-                            finalPos += noise * noiseAmp * (1.0 - morph);
+                            finalPos += noise * (1.0 - morph);
 
                             // Color Logic
                             vec3 patternColor = getPatternColor(uCycle);
@@ -291,7 +282,6 @@
                             
                             vec4 mvPosition = modelViewMatrix * vec4(finalPos, 1.0);
                             gl_PointSize = 3.5 * (300.0 / -mvPosition.z);
-                            if(bhPhase > 0.5) gl_PointSize *= smoothstep(0.0, 50.0, length(finalPos));
 
                             gl_Position = projectionMatrix * mvPosition;
                         }
@@ -301,7 +291,6 @@
                         void main() {
                             float d = length(gl_PointCoord - 0.5);
                             if(d > 0.5) discard;
-                            // Brightness boost for cosmic setting
                             gl_FragColor = vec4(vColor * 1.3, 1.0);
                         }
                     `,
@@ -381,3 +370,5 @@
 </script>
 </body>
 </html>
+
+```
