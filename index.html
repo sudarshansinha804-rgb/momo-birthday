@@ -62,6 +62,7 @@
     let isFist = false;
     let handPosition = new THREE.Vector3(9999, 9999, 0); 
     
+    // Global uniforms to ensure stability
     const globalUniforms = {
         uTime: { value: 0 },
         uHandPos: { value: new THREE.Vector3(9999, 9999, 0) },
