@@ -38,7 +38,7 @@
 
     <div id="overlay">
         <h1 style="font-weight: 100; letter-spacing: 5px;">HAPPY BIRTHDAY MOMO</h1>
-        <p style="color: #aaa; font-size: 14px; margin-top: -10px;">Make a wish & wave your hand.</p>
+        <p style="color: #aaa; font-size: 14px; margin-top: -10px;">Make a wish & close your hand.</p>
         <button id="startBtn">Begin</button>
         <div id="error-msg"></div>
     </div>
@@ -60,12 +60,9 @@
     
     let renderer, scene, camera, handTracker;
     let isFist = false;
-    let handPosition = new THREE.Vector3(9999, 9999, 0); 
     
-    // Global uniforms to ensure stability
     const globalUniforms = {
         uTime: { value: 0 },
-        uHandPos: { value: new THREE.Vector3(9999, 9999, 0) },
         uIsFist: { value: 0.0 }
     };
 
@@ -120,7 +117,8 @@
                     const pixelIndex = (pixelY * image.width + pixelX) * 4;
 
                     if(pixelIndex < imgData.data.length) {
-                        imagePositions.push((pixelX - image.width/2) * 0.5, -(pixelY - image.height/2) * 0.5, 0);
+                        // FIX: Changed scale from 0.5 to 0.12 to zoom out and show full image
+                        imagePositions.push((pixelX - image.width/2) * 0.12, -(pixelY - image.height/2) * 0.12, 0);
                         imageColors.push(imgData.data[pixelIndex]/255, imgData.data[pixelIndex+1]/255, imgData.data[pixelIndex+2]/255);
                     } else { imagePositions.push(0,0,0); imageColors.push(0,0,0); }
 
@@ -143,7 +141,6 @@
                     uniforms: globalUniforms,
                     vertexShader: `
                         uniform float uTime;
-                        uniform vec3 uHandPos;
                         uniform float uIsFist;
                         attribute vec3 aTargetHeart;
                         attribute vec3 aTargetImage;
@@ -158,22 +155,10 @@
                             vec3 noise = vec3(sin(uTime+aRandom*10.0), cos(uTime+aRandom*20.0), 0.0);
                             vec3 finalPos = targetPos + noise * (1.0 - morphFactor);
                             
-                            // --- GENTLE INTERACTION LOGIC ---
-                            float dist = distance(finalPos, uHandPos);
-                            // Reduced Radius (70) and Force (50) for gentle effect
-                            float radius = 70.0; 
+                            // FIX: Removed all hand repulsion logic here.
                             
                             // Default Heart Color (Warm Pink/Orange gradient)
                             vec3 col = mix(vec3(1.0,0.1,0.5), vec3(1.0,0.6,0.1), aRandom);
-
-                            if(dist < radius) {
-                                vec3 dir = normalize(finalPos - uHandPos);
-                                float force = (1.0 - dist / radius) * 50.0; 
-                                finalPos += dir * force;
-                                // Turn bright white gently when touched
-                                col = mix(col, vec3(1.0, 1.0, 1.0), (1.0 - dist/radius)*0.8); 
-                            }
-
                             vColor = mix(col, aColorImage, morphFactor);
                             
                             vec4 mvPosition = modelViewMatrix * vec4(finalPos, 1.0);
@@ -184,10 +169,8 @@
                     fragmentShader: `
                         varying vec3 vColor;
                         void main() {
-                            // Soft round particles
                             float d = length(gl_PointCoord - 0.5);
                             if(d > 0.5) discard;
-                            // Slight glow towards center
                             gl_FragColor = vec4(vColor + (0.5-d)*0.5, 1.0);
                         }
                     `,
@@ -216,9 +199,6 @@
         handTracker.onResults((results) => {
             if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
                 const landmarks = results.multiHandLandmarks[0];
-                const x = (1.0 - landmarks[8].x) * 2.0 - 1.0; 
-                const y = (1.0 - landmarks[8].y) * 2.0 - 1.0;
-                handPosition.lerp(new THREE.Vector3(x * 300, y * 300, 0), 0.3);
                 
                 // Fist Check
                 const tips = [8,12,16,20];
@@ -229,7 +209,6 @@
                 });
                 isFist = rolled >= 3;
             } else {
-                handPosition.lerp(new THREE.Vector3(9999,9999,0), 0.1);
                 isFist = false;
             }
         });
@@ -243,14 +222,9 @@
 
     function animate() {
         requestAnimationFrame(animate);
-        
         globalUniforms.uTime.value += 0.02;
-        globalUniforms.uHandPos.value.copy(handPosition);
         globalUniforms.uIsFist.value = THREE.MathUtils.lerp(globalUniforms.uIsFist.value, isFist?1.0:0.0, 0.1);
-        
-        // Slower, more romantic rotation speed
         if(scene) scene.rotation.y += 0.001;
-
         renderer.render(scene, camera);
     }
 </script>
