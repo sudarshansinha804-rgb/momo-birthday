@@ -55,7 +55,8 @@
         errDiv.innerHTML = "Error: " + msg;
     }
 
-    const PARTICLE_COUNT = 35000;
+    // INCREASED PARTICLE COUNT FOR SHARPNESS
+    const PARTICLE_COUNT = 65000;
     const IMAGE_URL = 'image_0.png'; 
     
     let renderer, scene, camera, handTracker;
@@ -82,7 +83,6 @@
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         
         scene = new THREE.Scene();
-        // Changed far clip to 3000 to support expansion
         camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 1, 3000);
         camera.position.z = window.innerWidth < 600 ? 500 : 350;
 
@@ -108,7 +108,9 @@
                 const imgData = ctx.getImageData(0, 0, image.width, image.height);
 
                 const posHeart = [], posSaturn = [], posFlower = [], posExpand = [], posBlackHole = [], posImage = [];
-                const colors = [], randoms = [];
+                // Separate color arrays for each object
+                const colHeart = [], colSaturn = [], colFlower = [], colExpand = [], colBlackHole = [], colImage = [];
+                const randoms = [];
                 
                 const ratio = image.width / image.height;
                 const gridY = Math.sqrt(PARTICLE_COUNT / ratio);
@@ -123,56 +125,77 @@
                     const pixelY = Math.floor(gy * stepY);
                     const pixelIndex = (pixelY * image.width + pixelX) * 4;
 
-                    // 1. IMAGE
+                    // 1. IMAGE POSITION & COLOR (Natural, balanced)
                     if(pixelIndex < imgData.data.length) {
                         posImage.push((pixelX - image.width/2) * 0.12, -(pixelY - image.height/2) * 0.12, 0);
-                        // Boosted image brightness in JS
-                        colors.push(imgData.data[pixelIndex]/255*1.2, imgData.data[pixelIndex+1]/255*1.2, imgData.data[pixelIndex+2]/255*1.2);
-                    } else { posImage.push(0,0,0); colors.push(0,0,0); }
+                        // Natural color (normalized 0-1)
+                        colImage.push(imgData.data[pixelIndex]/255, imgData.data[pixelIndex+1]/255, imgData.data[pixelIndex+2]/255);
+                    } else { 
+                        posImage.push(0,0,0); 
+                        colImage.push(0,0,0); 
+                    }
 
-                    // 2. HEART
-                    const t = Math.random() * Math.PI * 2;
+                    const rand = Math.random();
+
+                    // 2. HEART (Red/Pink/White mix)
+                    const t = rand * Math.PI * 2;
                     const r = Math.pow(Math.random(), 0.3) * 10.0;
                     let hx = 16 * Math.pow(Math.sin(t), 3);
                     let hy = 13 * Math.cos(t) - 5 * Math.cos(2*t) - 2*Math.cos(3*t) - Math.cos(4*t);
                     posHeart.push(hx * r, hy * r, (Math.random()-0.5)*10);
+                    // Color: Mix of Deep Red and Light Pink
+                    if(rand > 0.5) colHeart.push(1.0, 0.0, 0.2); // Red
+                    else colHeart.push(1.0, 0.6, 0.8); // Pink
 
-                    // 3. SATURN
+                    // 3. SATURN (Gold Planet, White Rings)
+                    let sx, sy, sz, cr, cg, cb;
                     if (Math.random() > 0.3) {
+                        // Planet
                         const theta = Math.random() * Math.PI * 2;
                         const phi = Math.acos(2 * Math.random() - 1);
                         const sr = 120.0;
-                        posSaturn.push(sr * Math.sin(phi) * Math.cos(theta), sr * Math.sin(phi) * Math.sin(theta), sr * Math.cos(phi));
+                        sx = sr * Math.sin(phi) * Math.cos(theta);
+                        sy = sr * Math.sin(phi) * Math.sin(theta);
+                        sz = sr * Math.cos(phi);
+                        cr=0.9; cg=0.7; cb=0.4; // Gold/Beige
                     } else {
+                        // Rings
                         const angle = Math.random() * Math.PI * 2;
                         const radius = 160 + Math.random() * 80;
-                        posSaturn.push(radius * Math.cos(angle), (Math.random()-0.5)*5, radius * Math.sin(angle));
+                        sx = radius * Math.cos(angle);
+                        sy = (Math.random()-0.5)*5;
+                        sz = radius * Math.sin(angle);
+                        cr=0.8; cg=0.8; cb=0.9; // Icy White/Blue
                     }
+                    posSaturn.push(sx, sy, sz);
+                    colSaturn.push(cr, cg, cb);
 
-                    // 4. FLOWER
+                    // 4. FLOWER (Magenta/Purple Rose)
                     const k = 4;
                     const ft = Math.random() * Math.PI * 2;
                     const fr = 200 * Math.cos(k * ft) * Math.random();
                     posFlower.push(fr * Math.cos(ft), fr * Math.sin(ft), (Math.random()-0.5) * 50);
+                    // Gradient from Purple center to Pink edges
+                    const fMix = Math.random();
+                    colFlower.push(0.8 + fMix*0.2, 0.1, 0.5 + fMix*0.5);
 
-                    // 5. EXPANSION
+                    // 5. EXPANSION (Star White/Cyan)
                     const exTheta = Math.random() * Math.PI * 2;
                     const exPhi = Math.acos(2 * Math.random() - 1);
-                    const exR = 400 + Math.random() * 800; // Wider expansion
+                    const exR = 400 + Math.random() * 800;
                     posExpand.push(exR * Math.sin(exPhi) * Math.cos(exTheta), exR * Math.sin(exPhi) * Math.sin(exTheta), exR * Math.cos(exPhi));
+                    colExpand.push(0.8, 0.9, 1.0); // Star White
 
-                    // 6. NEW INTERSTELLAR BLACK HOLE (Accretion Disk)
-                    const rand = Math.random();
-                    // Distribution: More particles near center, flattened disk
-                    const bhRadius = Math.pow(rand, 0.5) * 180.0 + 10.0; // +10 for Event Horizon hole
-                    const bhAngle = rand * Math.PI * 2 * 4.0; // More swirls
-                    const bhHeight = (Math.random() - 0.5) * bhRadius * 0.2; // Flattened disk
-                    
-                    posBlackHole.push(
-                        bhRadius * Math.cos(bhAngle),
-                        bhHeight,
-                        bhRadius * Math.sin(bhAngle)
-                    );
+                    // 6. BLACK HOLE (Fiery Orange/Red + Darkness)
+                    const bhRadius = Math.pow(Math.random(), 0.5) * 180.0 + 10.0;
+                    const bhAngle = Math.random() * Math.PI * 2 * 4.0;
+                    const bhHeight = (Math.random() - 0.5) * bhRadius * 0.2;
+                    posBlackHole.push(bhRadius * Math.cos(bhAngle), bhHeight, bhRadius * Math.sin(bhAngle));
+                    // Color based on distance (Hot center, Dark edge)
+                    const distRatio = bhRadius / 200.0;
+                    if(distRatio < 0.2) { colBlackHole.push(1.0, 1.0, 0.8); } // White Hot Center
+                    else if (distRatio < 0.5) { colBlackHole.push(1.0, 0.5, 0.0); } // Orange
+                    else { colBlackHole.push(0.5, 0.1, 0.0); } // Dark Red Edge
 
                     randoms.push(Math.random());
                 }
@@ -180,6 +203,7 @@
                 const geometry = new THREE.BufferGeometry();
                 geometry.setAttribute('position', new THREE.Float32BufferAttribute(posHeart, 3));
                 
+                // Targets
                 geometry.setAttribute('aTargetHeart', new THREE.Float32BufferAttribute(posHeart, 3));
                 geometry.setAttribute('aTargetSaturn', new THREE.Float32BufferAttribute(posSaturn, 3));
                 geometry.setAttribute('aTargetFlower', new THREE.Float32BufferAttribute(posFlower, 3));
@@ -187,7 +211,14 @@
                 geometry.setAttribute('aTargetBlackHole', new THREE.Float32BufferAttribute(posBlackHole, 3));
                 geometry.setAttribute('aTargetImage', new THREE.Float32BufferAttribute(posImage, 3));
                 
-                geometry.setAttribute('aColorImage', new THREE.Float32BufferAttribute(colors, 3));
+                // Colors
+                geometry.setAttribute('aColorHeart', new THREE.Float32BufferAttribute(colHeart, 3));
+                geometry.setAttribute('aColorSaturn', new THREE.Float32BufferAttribute(colSaturn, 3));
+                geometry.setAttribute('aColorFlower', new THREE.Float32BufferAttribute(colFlower, 3));
+                geometry.setAttribute('aColorExpand', new THREE.Float32BufferAttribute(colExpand, 3));
+                geometry.setAttribute('aColorBlackHole', new THREE.Float32BufferAttribute(colBlackHole, 3));
+                geometry.setAttribute('aColorImage', new THREE.Float32BufferAttribute(colImage, 3));
+
                 geometry.setAttribute('aRandom', new THREE.Float32BufferAttribute(randoms, 1));
 
                 const material = new THREE.ShaderMaterial({
@@ -197,16 +228,26 @@
                         uniform float uMorphFactor;
                         uniform float uCycle;
                         
+                        // Positions
                         attribute vec3 aTargetHeart;
                         attribute vec3 aTargetSaturn;
                         attribute vec3 aTargetFlower;
                         attribute vec3 aTargetExpand;
                         attribute vec3 aTargetBlackHole;
                         attribute vec3 aTargetImage;
+                        
+                        // Colors
+                        attribute vec3 aColorHeart;
+                        attribute vec3 aColorSaturn;
+                        attribute vec3 aColorFlower;
+                        attribute vec3 aColorExpand;
+                        attribute vec3 aColorBlackHole;
                         attribute vec3 aColorImage;
+
                         attribute float aRandom;
                         varying vec3 vColor;
 
+                        // Position Mixer
                         vec3 getPatternPos(float cycle) {
                             float stage = mod(cycle, 5.0);
                             if (stage < 1.0) return mix(aTargetHeart, aTargetSaturn, smoothstep(0.0, 1.0, stage));
@@ -216,39 +257,39 @@
                             else return mix(aTargetExpand, aTargetHeart, smoothstep(0.0, 1.0, stage - 4.0));
                         }
 
+                        // Color Mixer (Matches Position Cycle)
+                        vec3 getPatternColor(float cycle) {
+                            float stage = mod(cycle, 5.0);
+                            if (stage < 1.0) return mix(aColorHeart, aColorSaturn, smoothstep(0.0, 1.0, stage));
+                            else if (stage < 2.0) return mix(aColorSaturn, aColorFlower, smoothstep(0.0, 1.0, stage - 1.0));
+                            else if (stage < 3.0) return mix(aColorFlower, aColorBlackHole, smoothstep(0.0, 1.0, stage - 2.0));
+                            else if (stage < 4.0) return mix(aColorBlackHole, aColorExpand, smoothstep(0.0, 1.0, stage - 3.0));
+                            else return mix(aColorExpand, aColorHeart, smoothstep(0.0, 1.0, stage - 4.0));
+                        }
+
                         void main() {
                             vec3 patternPos = getPatternPos(uCycle);
 
                             float morph = smoothstep(0.0, 1.0, uMorphFactor);
                             vec3 finalPos = mix(patternPos, aTargetImage, morph);
                             
-                            // Black Hole Phase Calculation
+                            // Noise
                             float bhPhase = smoothstep(0.0, 0.5, abs(mod(uCycle, 5.0) - 3.5));
                             float noiseAmp = 1.0 - bhPhase * 0.9; 
-
                             vec3 noise = vec3(sin(uTime + aRandom*10.0), cos(uTime + aRandom*20.0), 0.0);
                             finalPos += noise * noiseAmp * (1.0 - morph);
 
-                            // --- COLOR LOGIC FIXED ---
-                            // 1. Calculate Base Pattern Color
-                            vec3 basePatternColor = mix(vec3(1.0, 0.2, 0.5), vec3(0.5, 0.8, 1.0), sin(uCycle)*0.5+0.5);
-                            if (uCycle > 0.5 && uCycle < 1.5) basePatternColor = mix(basePatternColor, vec3(1.0, 0.9, 0.4), 0.5);
-                            
-                            // 2. Calculate Black Hole Color (Fiery Orange/Red accretion disk)
-                            // Brighter near center based on position length
-                            float distFromCenter = length(finalPos);
-                            vec3 bhColor = mix(vec3(1.0, 0.6, 0.1), vec3(1.0, 0.1, 0.0), smoothstep(0.0, 200.0, distFromCenter));
-                            bhColor *= (200.0 / (distFromCenter + 10.0)); // Extremely bright center
+                            // --- COLOR LOGIC ---
+                            // 1. Get Base Object Color
+                            vec3 patternColor = getPatternColor(uCycle);
 
-                            // 3. Mix Pattern with Black Hole based on phase
-                            vec3 finalPatternColor = mix(basePatternColor, bhColor, bhPhase);
-
-                            // 4. Final Mix with Image Color (Image color is now PURE)
-                            vColor = mix(finalPatternColor, aColorImage, morph);
+                            // 2. Mix with Image Color (Clean mix, no brightness hacks)
+                            vColor = mix(patternColor, aColorImage, morph);
                             
                             vec4 mvPosition = modelViewMatrix * vec4(finalPos, 1.0);
-                            gl_PointSize = 4.0 * (300.0 / -mvPosition.z); // Increased base particle size
-                            
+                            gl_PointSize = 3.5 * (300.0 / -mvPosition.z);
+                            if(bhPhase > 0.5) gl_PointSize *= smoothstep(0.0, 50.0, length(finalPos)); // Fade center of BH
+
                             gl_Position = projectionMatrix * mvPosition;
                         }
                     `,
@@ -257,8 +298,8 @@
                         void main() {
                             float d = length(gl_PointCoord - 0.5);
                             if(d > 0.5) discard;
-                            // BOOSTED BRIGHTNESS in Fragment Shader
-                            gl_FragColor = vec4((vColor * 2.5) + (0.5-d)*1.5, 1.0);
+                            // Natural Glow: Just a slight boost (1.2) + soft edge
+                            gl_FragColor = vec4(vColor * 1.2, 1.0);
                         }
                     `,
                     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
