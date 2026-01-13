@@ -38,7 +38,7 @@
 
     <div id="overlay">
         <h1 style="font-weight: 100; letter-spacing: 5px;">HAPPY BIRTHDAY MOMO</h1>
-        <p style="color: #aaa; font-size: 14px; margin-top: -10px;">Make a wish & close your hand.</p>
+        <p style="color: #aaa; font-size: 14px; margin-top: -10px;">Raise your hand to reveal.</p>
         <button id="startBtn">Begin</button>
         <div id="error-msg"></div>
     </div>
@@ -59,13 +59,15 @@
     const IMAGE_URL = 'image_0.png'; 
     
     let renderer, scene, camera, handTracker;
-    let isFist = false;
     
-    // Controls the morph cycle (0-4)
+    // Logic Flags
+    let handDetected = false;
+    let targetRotation = 0;
+    
     const globalUniforms = {
         uTime: { value: 0 },
         uCycle: { value: 0 }, 
-        uIsFist: { value: 0.0 }
+        uMorphFactor: { value: 0.0 } // 0 = Patterns, 1 = Image
     };
 
     document.getElementById('startBtn').addEventListener('click', async () => {
@@ -120,53 +122,48 @@
                     const pixelY = Math.floor(gy * stepY);
                     const pixelIndex = (pixelY * image.width + pixelX) * 4;
 
-                    // --- 1. IMAGE TARGET ---
+                    // 1. IMAGE
                     if(pixelIndex < imgData.data.length) {
                         posImage.push((pixelX - image.width/2) * 0.12, -(pixelY - image.height/2) * 0.12, 0);
                         colors.push(imgData.data[pixelIndex]/255, imgData.data[pixelIndex+1]/255, imgData.data[pixelIndex+2]/255);
                     } else { posImage.push(0,0,0); colors.push(0,0,0); }
 
-                    // --- 2. HEART TARGET ---
+                    // 2. HEART
                     const t = Math.random() * Math.PI * 2;
                     const r = Math.pow(Math.random(), 0.3) * 10.0;
                     let hx = 16 * Math.pow(Math.sin(t), 3);
                     let hy = 13 * Math.cos(t) - 5 * Math.cos(2*t) - 2*Math.cos(3*t) - Math.cos(4*t);
                     posHeart.push(hx * r, hy * r, (Math.random()-0.5)*10);
 
-                    // --- 3. SATURN TARGET ---
-                    // 70% Planet, 30% Rings
+                    // 3. SATURN
                     if (Math.random() > 0.3) {
-                        // Planet Sphere
                         const theta = Math.random() * Math.PI * 2;
                         const phi = Math.acos(2 * Math.random() - 1);
-                        const sr = 120.0; // Planet Size
+                        const sr = 120.0;
                         posSaturn.push(sr * Math.sin(phi) * Math.cos(theta), sr * Math.sin(phi) * Math.sin(theta), sr * Math.cos(phi));
                     } else {
-                        // Rings (Flat Disk)
                         const angle = Math.random() * Math.PI * 2;
-                        const radius = 160 + Math.random() * 80; // Ring Radius
+                        const radius = 160 + Math.random() * 80;
                         posSaturn.push(radius * Math.cos(angle), (Math.random()-0.5)*5, radius * Math.sin(angle));
                     }
 
-                    // --- 4. FLOWER TARGET (Rose Curve) ---
-                    // r = cos(k * theta)
-                    const k = 4; // Petals
+                    // 4. FLOWER
+                    const k = 4;
                     const ft = Math.random() * Math.PI * 2;
-                    const fr = 200 * Math.cos(k * ft) * Math.random(); // Varied radius for fill
-                    // Add some depth to make it 3D
+                    const fr = 200 * Math.cos(k * ft) * Math.random();
                     posFlower.push(fr * Math.cos(ft), fr * Math.sin(ft), (Math.random()-0.5) * 50);
 
-                    // --- 5. EXPANSION TARGET (Big Bang) ---
+                    // 5. EXPANSION
                     const exTheta = Math.random() * Math.PI * 2;
                     const exPhi = Math.acos(2 * Math.random() - 1);
-                    const exR = 300 + Math.random() * 500; // Far out
+                    const exR = 300 + Math.random() * 500;
                     posExpand.push(exR * Math.sin(exPhi) * Math.cos(exTheta), exR * Math.sin(exPhi) * Math.sin(exTheta), exR * Math.cos(exPhi));
 
                     randoms.push(Math.random());
                 }
 
                 const geometry = new THREE.BufferGeometry();
-                geometry.setAttribute('position', new THREE.Float32BufferAttribute(posHeart, 3)); // Start at Heart
+                geometry.setAttribute('position', new THREE.Float32BufferAttribute(posHeart, 3));
                 
                 geometry.setAttribute('aTargetHeart', new THREE.Float32BufferAttribute(posHeart, 3));
                 geometry.setAttribute('aTargetSaturn', new THREE.Float32BufferAttribute(posSaturn, 3));
@@ -181,8 +178,8 @@
                     uniforms: globalUniforms,
                     vertexShader: `
                         uniform float uTime;
-                        uniform float uIsFist;
-                        uniform float uCycle; // 0=Heart, 1=Saturn, 2=Flower, 3=Expand
+                        uniform float uMorphFactor;
+                        uniform float uCycle;
                         
                         attribute vec3 aTargetHeart;
                         attribute vec3 aTargetSaturn;
@@ -191,44 +188,33 @@
                         attribute vec3 aTargetImage;
                         attribute vec3 aColorImage;
                         attribute float aRandom;
-                        
                         varying vec3 vColor;
 
-                        // Helper for 4-way mixing
                         vec3 getPatternPos(float cycle) {
-                            // Cycle goes 0 -> 1 -> 2 -> 3 -> 0
                             float stage = mod(cycle, 4.0);
-                            
-                            if (stage < 1.0) {
-                                return mix(aTargetHeart, aTargetSaturn, smoothstep(0.0, 1.0, stage));
-                            } else if (stage < 2.0) {
-                                return mix(aTargetSaturn, aTargetFlower, smoothstep(0.0, 1.0, stage - 1.0));
-                            } else if (stage < 3.0) {
-                                return mix(aTargetFlower, aTargetExpand, smoothstep(0.0, 1.0, stage - 2.0));
-                            } else {
-                                return mix(aTargetExpand, aTargetHeart, smoothstep(0.0, 1.0, stage - 3.0));
-                            }
+                            if (stage < 1.0) return mix(aTargetHeart, aTargetSaturn, smoothstep(0.0, 1.0, stage));
+                            else if (stage < 2.0) return mix(aTargetSaturn, aTargetFlower, smoothstep(0.0, 1.0, stage - 1.0));
+                            else if (stage < 3.0) return mix(aTargetFlower, aTargetExpand, smoothstep(0.0, 1.0, stage - 2.0));
+                            else return mix(aTargetExpand, aTargetHeart, smoothstep(0.0, 1.0, stage - 3.0));
                         }
 
                         void main() {
-                            // 1. Calculate Pattern Position based on Time Cycle
+                            // 1. Cycle Patterns
                             vec3 patternPos = getPatternPos(uCycle);
 
-                            // 2. Fist Override Logic
-                            float fistFactor = smoothstep(0.0, 1.0, uIsFist);
-                            vec3 finalPos = mix(patternPos, aTargetImage, fistFactor);
+                            // 2. Morph to Image based on Hand Presence
+                            float morph = smoothstep(0.0, 1.0, uMorphFactor);
+                            vec3 finalPos = mix(patternPos, aTargetImage, morph);
                             
-                            // 3. Gentle Noise (Breathing)
+                            // 3. Noise
                             vec3 noise = vec3(sin(uTime + aRandom*10.0), cos(uTime + aRandom*20.0), 0.0);
-                            finalPos += noise * (1.0 - fistFactor); // Stop noise when image forms
+                            finalPos += noise * (1.0 - morph);
 
-                            // 4. Color Logic
-                            // Default: Warm Gradient -> Image Color
+                            // 4. Color
                             vec3 patternColor = mix(vec3(1.0, 0.2, 0.5), vec3(0.5, 0.8, 1.0), sin(uCycle)*0.5+0.5);
-                            // If Saturn (Stage 1), make it Gold/White
                             if (uCycle > 0.5 && uCycle < 1.5) patternColor = mix(patternColor, vec3(1.0, 0.9, 0.4), 0.5);
                             
-                            vColor = mix(patternColor, aColorImage, fistFactor);
+                            vColor = mix(patternColor, aColorImage, morph);
                             
                             vec4 mvPosition = modelViewMatrix * vec4(finalPos, 1.0);
                             gl_PointSize = 3.5 * (300.0 / -mvPosition.z);
@@ -267,16 +253,29 @@
 
         handTracker.onResults((results) => {
             if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                handDetected = true;
                 const landmarks = results.multiHandLandmarks[0];
-                const tips = [8,12,16,20];
-                let rolled = 0;
-                tips.forEach(t => {
-                    const d = Math.sqrt(Math.pow(landmarks[t].x - landmarks[0].x, 2) + Math.pow(landmarks[t].y - landmarks[0].y, 2));
-                    if(d < 0.35) rolled++; 
-                });
-                isFist = rolled >= 3;
+                
+                // --- WRIST TWIST CALCULATION ---
+                // We use Index MCP (5) and Pinky MCP (17) to calculate roll
+                const p1 = landmarks[5];
+                const p2 = landmarks[17];
+                
+                // Calculate angle in 2D plane (XY)
+                // Note: Webcam X is inverted, so we handle signs carefully
+                const dx = p2.x - p1.x;
+                const dy = p2.y - p1.y;
+                
+                // Calculate twist angle
+                // Normalize it so flat hand = 0
+                const angle = Math.atan2(dy, dx);
+                
+                // Smoothing the rotation (Lerp)
+                // We multiply by a factor to make it responsive
+                targetRotation = -angle * 2.0; 
+
             } else {
-                isFist = false;
+                handDetected = false;
             }
         });
 
@@ -292,14 +291,22 @@
         
         globalUniforms.uTime.value += 0.02;
         
-        // Cycle Pattern every 12 seconds (approx)
-        // 0->1->2->3->4(0)
-        globalUniforms.uCycle.value += 0.005; 
+        // Cycle Patterns only if Hand is NOT detected
+        if (!handDetected) {
+            globalUniforms.uCycle.value += 0.005; 
+            // Auto rotate slowly if no hand
+            if(scene) scene.rotation.y += 0.001; 
+        } else {
+            // Hand Detected: Apply Wrist Rotation
+            // We align 0 rotation to roughly "palm vertical" or adjusted offset
+            if(scene) {
+                 // Smoothly rotate towards wrist angle
+                 scene.rotation.y += (targetRotation - scene.rotation.y) * 0.1;
+            }
+        }
 
-        // Smooth Fist Transition
-        globalUniforms.uIsFist.value = THREE.MathUtils.lerp(globalUniforms.uIsFist.value, isFist?1.0:0.0, 0.1);
-        
-        if(scene) scene.rotation.y += 0.001;
+        // Morph Logic: Detected = 1 (Image), Not Detected = 0 (Patterns)
+        globalUniforms.uMorphFactor.value = THREE.MathUtils.lerp(globalUniforms.uMorphFactor.value, handDetected?1.0:0.0, 0.1);
 
         renderer.render(scene, camera);
     }
