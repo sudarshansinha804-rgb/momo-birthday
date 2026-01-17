@@ -7,162 +7,119 @@
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; font-family: sans-serif; }
         canvas { display: block; width: 100vw; height: 100vh; }
-        
         #overlay {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.8);
-            display: flex; flex-direction: column; justify-content: center; align-items: center;
-            z-index: 10; color: #ff0055;
+            background: rgba(0,0,0,0.85); display: flex; flex-direction: column; 
+            justify-content: center; align-items: center; z-index: 10; color: #ff0055;
         }
-        
         button {
             padding: 15px 40px; font-size: 18px; background: transparent;
             color: #ff0055; border: 2px solid #ff0055; cursor: pointer;
-            letter-spacing: 3px; transition: 0.3s; margin-top: 30px;
-            text-transform: uppercase;
+            letter-spacing: 3px; transition: 0.3s; margin-top: 30px; text-transform: uppercase;
         }
         button:hover { background: #ff0055; color: white; box-shadow: 0 0 20px #ff0055; }
-        
         #input_video { display: none; }
-        #error-msg { position: absolute; bottom: 20px; color: red; font-size: 12px; display: none; }
     </style>
-    
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
-    <script type="importmap">
-        { "imports": { "three": "https://unpkg.com/three@0.158.0/build/three.module.js" } }
-    </script>
+    <script type="importmap">{ "imports": { "three": "https://unpkg.com/three@0.158.0/build/three.module.js" } }</script>
 </head>
 <body>
-
     <div id="overlay">
-        <h1 style="font-weight: 100; letter-spacing: 5px;">HAPPY BIRTHDAY MOMO</h1>
-        <button id="startBtn">Begin</button>
-        <div id="error-msg"></div>
+        <h1 style="font-weight: 100; letter-spacing: 5px;">A UNIVERSAL WISH</h1>
+        <button id="startBtn">Begin Experience</button>
     </div>
-    
     <video id="input_video" playsinline></video>
     <canvas id="c"></canvas>
 
 <script type="module">
     import * as THREE from 'three';
 
-    function showError(msg) {
-        const errDiv = document.getElementById('error-msg');
-        errDiv.style.display = 'block';
-        errDiv.innerHTML = "Error: " + msg;
-    }
-
-    // --- DOUBLED TO 200,000 FOR MAXIMUM DETAIL ---
-    const PARTICLE_COUNT = 200000;
+    const PARTICLE_COUNT = 80000;
     const IMAGE_URL = 'image_0.png'; 
     const SPACE_BG_URL = 'cosmos.png';
     
     let renderer, scene, camera, handTracker;
-    let handDetected = false;
-    let isFist = false;
-    let targetRotation = 0;
+    let handDetected = false, isFist = false, targetRotation = 0;
     
     const globalUniforms = {
         uTime: { value: 0 },
         uCycle: { value: 0 }, 
-        uMorphFactor: { value: 0.0 } 
+        uMorphFactor: { value: 0.0 }, // 0=Patterns, 0.5=Message, 1=Image
+        uExplosion: { value: 0.0 }
     };
 
     document.getElementById('startBtn').addEventListener('click', async () => {
-        document.getElementById('startBtn').innerHTML = "Loading Universe...";
-        try { await init(); } catch (e) { showError(e.message); }
+        document.getElementById('startBtn').innerHTML = "Generating Starfield...";
+        await init();
     });
 
     async function init() {
         const canvas = document.querySelector('#c');
         renderer = new THREE.WebGLRenderer({ canvas, antialias: false, logarithmicDepthBuffer: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5)); // Capped pixel ratio slightly for performance
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         
         scene = new THREE.Scene();
-        
         const textureLoader = new THREE.TextureLoader();
-        textureLoader.load(SPACE_BG_URL, (texture) => {
-            texture.colorSpace = THREE.SRGBColorSpace;
-            scene.background = texture;
-        });
-
+        textureLoader.load(SPACE_BG_URL, (t) => { t.colorSpace = THREE.SRGBColorSpace; scene.background = t; });
         scene.fog = new THREE.FogExp2(0x000000, 0.0005);
 
         camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 1, 5000);
-        camera.position.z = window.innerWidth < 600 ? 500 : 350;
+        camera.position.z = 400;
 
         await createParticleSystem(IMAGE_URL);
         setupMediaPipe();
-        
         document.getElementById('overlay').style.display = 'none';
         animate();
     }
 
     async function createParticleSystem(imageUrl) {
-        return new Promise((resolve, reject) => {
+        return new Promise((resolve) => {
             const image = new Image();
             image.crossOrigin = "Anonymous";
             image.src = imageUrl;
             image.onload = () => {
                 const imgCanvas = document.createElement('canvas');
                 const ctx = imgCanvas.getContext('2d');
-                imgCanvas.width = image.width;
-                imgCanvas.height = image.height;
+                imgCanvas.width = image.width; imgCanvas.height = image.height;
                 ctx.drawImage(image, 0, 0);
                 const imgData = ctx.getImageData(0, 0, image.width, image.height);
 
-                const posHeart = [], posSaturn = [], posFlower = [], posExpand = [], posImage = [];
-                const colHeart = [], colSaturn = [], colFlower = [], colExpand = [], colImage = [];
-                const randoms = [];
-                
-                const ratio = image.width / image.height;
-                const gridY = Math.sqrt(PARTICLE_COUNT / ratio);
-                const gridX = gridY * ratio;
-                const stepX = image.width / gridX;
-                const stepY = image.height / gridY;
+                // --- Generate Message Data ---
+                const msgCanvas = document.createElement('canvas');
+                const mCtx = msgCanvas.getContext('2d');
+                msgCanvas.width = 1000; msgCanvas.height = 400;
+                mCtx.fillStyle = 'white';
+                mCtx.font = 'bold 60px Arial';
+                mCtx.textAlign = 'center';
+                mCtx.fillText("HAPPY BIRTHDAY", 500, 150);
+                mCtx.fillText("TO MY FUTURE DOCTOR", 500, 250);
+                const msgData = mCtx.getImageData(0,0,1000,400);
+
+                const posHeart = [], posSaturn = [], posExpand = [], posMsg = [], posImage = [];
+                const colImage = [], randoms = [];
 
                 for (let i = 0; i < PARTICLE_COUNT; i++) {
-                    const gx = (i % Math.floor(gridX));
-                    const gy = Math.floor(i / Math.floor(gridX));
-                    const pixelX = Math.floor(gx * stepX);
-                    const pixelY = Math.floor(gy * stepY);
-                    const pixelIndex = (pixelY * image.width + pixelX) * 4;
-
-                    if(pixelIndex < imgData.data.length) {
-                        posImage.push((pixelX - image.width/2) * 0.12, -(pixelY - image.height/2) * 0.12, 0);
-                        colImage.push(imgData.data[pixelIndex]/255, imgData.data[pixelIndex+1]/255, imgData.data[pixelIndex+2]/255);
+                    const rand = Math.random();
+                    // Image Target
+                    const px = (i % 300); const py = Math.floor(i / 300);
+                    if(py < 300) {
+                        posImage.push((px - 150) * 1.2, -(py - 150) * 1.2, 0);
+                        colImage.push(1, 1, 1);
                     } else { posImage.push(0,0,0); colImage.push(0,0,0); }
 
-                    const rand = Math.random();
+                    // Message Target (Scattered points in text area)
+                    posMsg.push((Math.random()-0.5)*600, (Math.random()-0.5)*300, 0);
+
+                    // Heart Pattern
                     const t = rand * Math.PI * 2;
-                    const r = Math.pow(Math.random(), 0.3) * 10.0;
                     let hx = 16 * Math.pow(Math.sin(t), 3);
                     let hy = 13 * Math.cos(t) - 5 * Math.cos(2*t) - 2*Math.cos(3*t) - Math.cos(4*t);
-                    posHeart.push(hx * r, hy * r, (Math.random()-0.5)*10);
-                    if(rand > 0.5) colHeart.push(1.0, 0.0, 0.2); else colHeart.push(1.0, 0.6, 0.8); 
+                    posHeart.push(hx * 10, hy * 10, (Math.random()-0.5)*20);
 
-                    let sx, sy, sz, cr, cg, cb;
-                    if (Math.random() > 0.3) {
-                        const theta = Math.random() * Math.PI * 2, phi = Math.acos(2 * Math.random() - 1), sr = 120.0;
-                        sx = sr * Math.sin(phi) * Math.cos(theta); sy = sr * Math.sin(phi) * Math.sin(theta); sz = sr * Math.cos(phi);
-                        cr=0.9; cg=0.7; cb=0.4; 
-                    } else {
-                        const angle = Math.random() * Math.PI * 2, radius = 160 + Math.random() * 80;
-                        sx = radius * Math.cos(angle); sy = (Math.random()-0.5)*5; sz = radius * Math.sin(angle);
-                        cr=0.8; cg=0.8; cb=0.9; 
-                    }
-                    posSaturn.push(sx, sy, sz); colSaturn.push(cr, cg, cb);
-
-                    const ft = Math.random() * Math.PI * 2, fr = 200 * Math.cos(4.0 * ft) * Math.random();
-                    posFlower.push(fr * Math.cos(ft), fr * Math.sin(ft), (Math.random()-0.5) * 50);
-                    colFlower.push(0.9, 0.1, 0.6);
-
-                    const exTheta = Math.random() * Math.PI * 2, exPhi = Math.acos(2 * Math.random() - 1), exR = 400 + Math.random() * 800;
-                    posExpand.push(exR * Math.sin(exPhi) * Math.cos(exTheta), exR * Math.sin(exPhi) * Math.sin(exTheta), exR * Math.cos(exPhi));
-                    colExpand.push(0.8, 0.9, 1.0); 
+                    // Expand (Supernova base)
+                    posExpand.push((Math.random()-0.5)*2000, (Math.random()-0.5)*2000, (Math.random()-0.5)*2000);
 
                     randoms.push(Math.random());
                 }
@@ -170,69 +127,47 @@
                 const geometry = new THREE.BufferGeometry();
                 geometry.setAttribute('position', new THREE.Float32BufferAttribute(posHeart, 3));
                 geometry.setAttribute('aTargetHeart', new THREE.Float32BufferAttribute(posHeart, 3));
-                geometry.setAttribute('aTargetSaturn', new THREE.Float32BufferAttribute(posSaturn, 3));
-                geometry.setAttribute('aTargetFlower', new THREE.Float32BufferAttribute(posFlower, 3));
                 geometry.setAttribute('aTargetExpand', new THREE.Float32BufferAttribute(posExpand, 3));
+                geometry.setAttribute('aTargetMsg', new THREE.Float32BufferAttribute(posMsg, 3));
                 geometry.setAttribute('aTargetImage', new THREE.Float32BufferAttribute(posImage, 3));
-                geometry.setAttribute('aColorHeart', new THREE.Float32BufferAttribute(colHeart, 3));
-                geometry.setAttribute('aColorSaturn', new THREE.Float32BufferAttribute(colSaturn, 3));
-                geometry.setAttribute('aColorFlower', new THREE.Float32BufferAttribute(colFlower, 3));
-                geometry.setAttribute('aColorExpand', new THREE.Float32BufferAttribute(colExpand, 3));
-                geometry.setAttribute('aColorImage', new THREE.Float32BufferAttribute(colImage, 3));
                 geometry.setAttribute('aRandom', new THREE.Float32BufferAttribute(randoms, 1));
 
                 const material = new THREE.ShaderMaterial({
                     uniforms: globalUniforms,
                     vertexShader: `
-                        uniform float uTime, uMorphFactor, uCycle;
-                        attribute vec3 aTargetHeart, aTargetSaturn, aTargetFlower, aTargetExpand, aTargetImage;
-                        attribute vec3 aColorHeart, aColorSaturn, aColorFlower, aColorExpand, aColorImage;
+                        uniform float uTime, uMorphFactor, uCycle, uExplosion;
+                        attribute vec3 aTargetHeart, aTargetExpand, aTargetMsg, aTargetImage;
                         attribute float aRandom;
-                        varying vec3 vColor;
-
-                        vec3 getPatternPos(float cycle) {
-                            float stage = mod(cycle, 4.0);
-                            if (stage < 1.0) return mix(aTargetHeart, aTargetSaturn, smoothstep(0.0, 1.0, stage));
-                            else if (stage < 2.0) return mix(aTargetSaturn, aTargetFlower, smoothstep(0.0, 1.0, stage - 1.0));
-                            else if (stage < 3.0) return mix(aTargetFlower, aTargetExpand, smoothstep(0.0, 1.0, stage - 2.0));
-                            else return mix(aTargetExpand, aTargetHeart, smoothstep(0.0, 1.0, stage - 3.0));
-                        }
-
-                        vec3 getPatternColor(float cycle) {
-                            float stage = mod(cycle, 4.0);
-                            if (stage < 1.0) return mix(aColorHeart, aColorSaturn, smoothstep(0.0, 1.0, stage));
-                            else if (stage < 2.0) return mix(aColorSaturn, aColorFlower, smoothstep(0.0, 1.0, stage - 1.0));
-                            else if (stage < 3.0) return mix(aColorFlower, aColorExpand, smoothstep(0.0, 1.0, stage - 2.0));
-                            else return mix(aColorExpand, aColorHeart, smoothstep(0.0, 1.0, stage - 3.0));
-                        }
-
+                        varying float vAlpha;
                         void main() {
-                            vec3 patternPos = getPatternPos(uCycle);
-                            float morph = smoothstep(0.0, 1.0, uMorphFactor);
-                            vec3 finalPos = mix(patternPos, aTargetImage, morph);
-                            vec3 noise = vec3(sin(uTime + aRandom*10.0), cos(uTime + aRandom*20.0), 0.0);
-                            finalPos += noise * (1.0 - morph);
-                            vColor = mix(getPatternColor(uCycle), aColorImage, morph);
-                            vec4 mvPosition = modelViewMatrix * vec4(finalPos, 1.0);
-                            gl_PointSize = 2.0 * (300.0 / -mvPosition.z); // Slightly smaller point size for high density
+                            // Stage Logic: 0=Heart, 0.3=Supernova, 0.6=Message, 1=Portrait
+                            vec3 current;
+                            if(uMorphFactor < 0.3) current = mix(aTargetHeart, aTargetExpand, uMorphFactor/0.3);
+                            else if(uMorphFactor < 0.6) current = mix(aTargetExpand, aTargetMsg, (uMorphFactor-0.3)/0.3);
+                            else current = mix(aTargetMsg, aTargetImage, (uMorphFactor-0.6)/0.4);
+
+                            // Trail logic: Offset based on time and random
+                            current.x += sin(uTime * 0.5 + aRandom * 10.0) * 2.0 * (1.0 - uMorphFactor);
+                            
+                            vec4 mvPosition = modelViewMatrix * vec4(current, 1.0);
+                            gl_PointSize = 4.0 * (300.0 / -mvPosition.z);
                             gl_Position = projectionMatrix * mvPosition;
+                            vAlpha = 1.0 - smoothstep(0.8, 1.0, uMorphFactor) * 0.2;
                         }
                     `,
                     fragmentShader: `
-                        varying vec3 vColor;
+                        varying float vAlpha;
                         void main() {
                             if(length(gl_PointCoord - 0.5) > 0.5) discard;
-                            gl_FragColor = vec4(vColor, 1.0);
+                            gl_FragColor = vec4(1.0, 0.8, 0.9, vAlpha);
                         }
                     `,
-                    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
+                    transparent: true, blending: THREE.AdditiveBlending
                 });
 
-                const particleSystem = new THREE.Points(geometry, material);
-                scene.add(particleSystem);
+                scene.add(new THREE.Points(geometry, material));
                 resolve();
             };
-            image.onerror = () => reject(new Error("Image Failed"));
         });
     }
 
@@ -240,40 +175,23 @@
         const videoElement = document.getElementById('input_video');
         handTracker = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
         handTracker.setOptions({maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5});
-        handTracker.onResults((results) => {
-            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+        handTracker.onResults((res) => {
+            if (res.multiHandLandmarks && res.multiHandLandmarks.length > 0) {
                 handDetected = true;
-                const landmarks = results.multiHandLandmarks[0];
-                const dx = landmarks[17].x - landmarks[5].x, dy = landmarks[17].y - landmarks[5].y;
-                targetRotation = -Math.atan2(dy, dx) * 1.3; 
+                const lm = res.multiHandLandmarks[0];
                 let rolled = 0;
-                [8,12,16,20].forEach(t => {
-                    const d = Math.sqrt(Math.pow(landmarks[t].x - landmarks[0].x, 2) + Math.pow(landmarks[t].y - landmarks[0].y, 2));
-                    if(d < 0.35) rolled++; 
-                });
+                [8,12,16,20].forEach(t => { if(Math.hypot(lm[t].x-lm[0].x, lm[t].y-lm[0].y) < 0.3) rolled++; });
                 isFist = rolled >= 3;
-            } else { handDetected = false; isFist = false; }
+            } else handDetected = false;
         });
-        const cameraUtils = new Camera(videoElement, {onFrame: async () => { await handTracker.send({image: videoElement}); }, width: 640, height: 480});
-        cameraUtils.start();
+        new Camera(videoElement, {onFrame: async () => { await handTracker.send({image: videoElement}); }}).start();
     }
 
     function animate() {
         requestAnimationFrame(animate);
-        globalUniforms.uTime.value += 0.02;
-        if (!handDetected) {
-            globalUniforms.uCycle.value += 0.005; 
-            if(scene) scene.rotation.y += 0.001; 
-        } else if(scene) {
-            scene.rotation.y += (targetRotation - scene.rotation.y) * 0.05;
-        }
-        globalUniforms.uMorphFactor.value = THREE.MathUtils.lerp(globalUniforms.uMorphFactor.value, isFist?1.0:0.0, 0.03);
-
-        if(scene.background) {
-            const intensity = 1.0 - (globalUniforms.uMorphFactor.value * 0.7); 
-            scene.background.intensity = intensity;
-        }
-
+        globalUniforms.uTime.value += 0.05;
+        // Morph factor lerp: slower and more cinematic
+        globalUniforms.uMorphFactor.value = THREE.MathUtils.lerp(globalUniforms.uMorphFactor.value, isFist ? 1.0 : 0.0, 0.015);
         renderer.render(scene, camera);
     }
 </script>
