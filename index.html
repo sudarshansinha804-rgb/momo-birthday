@@ -54,7 +54,6 @@
         errDiv.innerHTML = "Error: " + msg;
     }
 
-    // --- INCREASED TO 100,000 FOR HIGH DEFINITION ---
     const PARTICLE_COUNT = 100000;
     const IMAGE_URL = 'image_0.png'; 
     const SPACE_BG_URL = 'cosmos.png';
@@ -71,7 +70,7 @@
     };
 
     document.getElementById('startBtn').addEventListener('click', async () => {
-        document.getElementById('startBtn').innerHTML = "Loading Universe...";
+        document.getElementById('startBtn').innerHTML = "Loading...";
         try { await init(); } catch (e) { showError(e.message); }
     });
 
@@ -133,53 +132,37 @@
 
                     if(pixelIndex < imgData.data.length) {
                         posImage.push((pixelX - image.width/2) * 0.12, -(pixelY - image.height/2) * 0.12, 0);
-                        // IMAGE COLOR BOOSTED BY 1.5x
-                        colImage.push(imgData.data[pixelIndex]/255*1.5, imgData.data[pixelIndex+1]/255*1.5, imgData.data[pixelIndex+2]/255*1.5);
+                        // NATURAL COLOR (No brightness multiplier)
+                        colImage.push(imgData.data[pixelIndex]/255, imgData.data[pixelIndex+1]/255, imgData.data[pixelIndex+2]/255);
                     } else { 
-                        posImage.push(0,0,0); 
-                        colImage.push(0,0,0); 
+                        posImage.push(0,0,0); colImage.push(0,0,0); 
                     }
 
                     const rand = Math.random();
-
                     const t = rand * Math.PI * 2;
                     const r = Math.pow(Math.random(), 0.3) * 10.0;
                     let hx = 16 * Math.pow(Math.sin(t), 3);
                     let hy = 13 * Math.cos(t) - 5 * Math.cos(2*t) - 2*Math.cos(3*t) - Math.cos(4*t);
                     posHeart.push(hx * r, hy * r, (Math.random()-0.5)*10);
-                    if(rand > 0.5) colHeart.push(1.0, 0.0, 0.2); 
-                    else colHeart.push(1.0, 0.6, 0.8); 
+                    if(rand > 0.5) colHeart.push(1.0, 0.0, 0.2); else colHeart.push(1.0, 0.6, 0.8); 
 
                     let sx, sy, sz, cr, cg, cb;
                     if (Math.random() > 0.3) {
-                        const theta = Math.random() * Math.PI * 2;
-                        const phi = Math.acos(2 * Math.random() - 1);
-                        const sr = 120.0;
-                        sx = sr * Math.sin(phi) * Math.cos(theta);
-                        sy = sr * Math.sin(phi) * Math.sin(theta);
-                        sz = sr * Math.cos(phi);
+                        const theta = Math.random() * Math.PI * 2, phi = Math.acos(2 * Math.random() - 1), sr = 120.0;
+                        sx = sr * Math.sin(phi) * Math.cos(theta); sy = sr * Math.sin(phi) * Math.sin(theta); sz = sr * Math.cos(phi);
                         cr=0.9; cg=0.7; cb=0.4; 
                     } else {
-                        const angle = Math.random() * Math.PI * 2;
-                        const radius = 160 + Math.random() * 80;
-                        sx = radius * Math.cos(angle);
-                        sy = (Math.random()-0.5)*5;
-                        sz = radius * Math.sin(angle);
+                        const angle = Math.random() * Math.PI * 2, radius = 160 + Math.random() * 80;
+                        sx = radius * Math.cos(angle); sy = (Math.random()-0.5)*5; sz = radius * Math.sin(angle);
                         cr=0.8; cg=0.8; cb=0.9; 
                     }
-                    posSaturn.push(sx, sy, sz);
-                    colSaturn.push(cr, cg, cb);
+                    posSaturn.push(sx, sy, sz); colSaturn.push(cr, cg, cb);
 
-                    const k = 4;
-                    const ft = Math.random() * Math.PI * 2;
-                    const fr = 200 * Math.cos(k * ft) * Math.random();
+                    const ft = Math.random() * Math.PI * 2, fr = 200 * Math.cos(4.0 * ft) * Math.random();
                     posFlower.push(fr * Math.cos(ft), fr * Math.sin(ft), (Math.random()-0.5) * 50);
-                    const fMix = Math.random();
-                    colFlower.push(0.8 + fMix*0.2, 0.1, 0.5 + fMix*0.5);
+                    colFlower.push(0.9, 0.1, 0.6);
 
-                    const exTheta = Math.random() * Math.PI * 2;
-                    const exPhi = Math.acos(2 * Math.random() - 1);
-                    const exR = 400 + Math.random() * 800;
+                    const exTheta = Math.random() * Math.PI * 2, exPhi = Math.acos(2 * Math.random() - 1), exR = 400 + Math.random() * 800;
                     posExpand.push(exR * Math.sin(exPhi) * Math.cos(exTheta), exR * Math.sin(exPhi) * Math.sin(exTheta), exR * Math.cos(exPhi));
                     colExpand.push(0.8, 0.9, 1.0); 
 
@@ -203,9 +186,7 @@
                 const material = new THREE.ShaderMaterial({
                     uniforms: globalUniforms,
                     vertexShader: `
-                        uniform float uTime;
-                        uniform float uMorphFactor;
-                        uniform float uCycle;
+                        uniform float uTime, uMorphFactor, uCycle;
                         attribute vec3 aTargetHeart, aTargetSaturn, aTargetFlower, aTargetExpand, aTargetImage;
                         attribute vec3 aColorHeart, aColorSaturn, aColorFlower, aColorExpand, aColorImage;
                         attribute float aRandom;
@@ -233,8 +214,7 @@
                             vec3 finalPos = mix(patternPos, aTargetImage, morph);
                             vec3 noise = vec3(sin(uTime + aRandom*10.0), cos(uTime + aRandom*20.0), 0.0);
                             finalPos += noise * (1.0 - morph);
-                            vec3 patternColor = getPatternColor(uCycle);
-                            vColor = mix(patternColor, aColorImage, morph);
+                            vColor = mix(getPatternColor(uCycle), aColorImage, morph);
                             vec4 mvPosition = modelViewMatrix * vec4(finalPos, 1.0);
                             gl_PointSize = 3.5 * (300.0 / -mvPosition.z);
                             gl_Position = projectionMatrix * mvPosition;
@@ -243,9 +223,9 @@
                     fragmentShader: `
                         varying vec3 vColor;
                         void main() {
-                            float d = length(gl_PointCoord - 0.5);
-                            if(d > 0.5) discard;
-                            gl_FragColor = vec4(vColor * 1.3, 1.0);
+                            if(length(gl_PointCoord - 0.5) > 0.5) discard;
+                            // NATURAL INTENSITY: No artificial boost
+                            gl_FragColor = vec4(vColor, 1.0);
                         }
                     `,
                     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
@@ -267,12 +247,10 @@
             if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
                 handDetected = true;
                 const landmarks = results.multiHandLandmarks[0];
-                const dx = landmarks[17].x - landmarks[5].x;
-                const dy = landmarks[17].y - landmarks[5].y;
+                const dx = landmarks[17].x - landmarks[5].x, dy = landmarks[17].y - landmarks[5].y;
                 targetRotation = -Math.atan2(dy, dx) * 1.3; 
-                const tips = [8,12,16,20];
                 let rolled = 0;
-                tips.forEach(t => {
+                [8,12,16,20].forEach(t => {
                     const d = Math.sqrt(Math.pow(landmarks[t].x - landmarks[0].x, 2) + Math.pow(landmarks[t].y - landmarks[0].y, 2));
                     if(d < 0.35) rolled++; 
                 });
@@ -294,13 +272,10 @@
         }
         globalUniforms.uMorphFactor.value = THREE.MathUtils.lerp(globalUniforms.uMorphFactor.value, isFist?1.0:0.0, 0.03);
 
-        // --- DYNAMIC BACKGROUND INTENSITY ---
-        // Fades background to dark when her picture appears
+        // SPOTLIGHT EFFECT: Dims background slightly when she appears so it's scannable
         if(scene.background) {
-            const intensity = 1.0 - (globalUniforms.uMorphFactor.value * 0.85); // Dims by 85%
-            scene.background.intensity = intensity; // For newer Three.js versions
-            // For older versions, we multiply the color:
-            scene.background.offset.set(0,0); // Trigger update
+            const intensity = 1.0 - (globalUniforms.uMorphFactor.value * 0.7); 
+            scene.background.intensity = intensity;
         }
 
         renderer.render(scene, camera);
