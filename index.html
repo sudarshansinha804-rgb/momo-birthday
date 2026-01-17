@@ -54,7 +54,8 @@
         errDiv.innerHTML = "Error: " + msg;
     }
 
-    const PARTICLE_COUNT = 100000;
+    // --- DOUBLED TO 200,000 FOR MAXIMUM DETAIL ---
+    const PARTICLE_COUNT = 200000;
     const IMAGE_URL = 'image_0.png'; 
     const SPACE_BG_URL = 'cosmos.png';
     
@@ -70,7 +71,7 @@
     };
 
     document.getElementById('startBtn').addEventListener('click', async () => {
-        document.getElementById('startBtn').innerHTML = "Loading...";
+        document.getElementById('startBtn').innerHTML = "Loading Universe...";
         try { await init(); } catch (e) { showError(e.message); }
     });
 
@@ -78,7 +79,7 @@
         const canvas = document.querySelector('#c');
         renderer = new THREE.WebGLRenderer({ canvas, antialias: false, logarithmicDepthBuffer: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5)); // Capped pixel ratio slightly for performance
         
         scene = new THREE.Scene();
         
@@ -132,11 +133,8 @@
 
                     if(pixelIndex < imgData.data.length) {
                         posImage.push((pixelX - image.width/2) * 0.12, -(pixelY - image.height/2) * 0.12, 0);
-                        // NATURAL COLOR (No brightness multiplier)
                         colImage.push(imgData.data[pixelIndex]/255, imgData.data[pixelIndex+1]/255, imgData.data[pixelIndex+2]/255);
-                    } else { 
-                        posImage.push(0,0,0); colImage.push(0,0,0); 
-                    }
+                    } else { posImage.push(0,0,0); colImage.push(0,0,0); }
 
                     const rand = Math.random();
                     const t = rand * Math.PI * 2;
@@ -216,7 +214,7 @@
                             finalPos += noise * (1.0 - morph);
                             vColor = mix(getPatternColor(uCycle), aColorImage, morph);
                             vec4 mvPosition = modelViewMatrix * vec4(finalPos, 1.0);
-                            gl_PointSize = 3.5 * (300.0 / -mvPosition.z);
+                            gl_PointSize = 2.0 * (300.0 / -mvPosition.z); // Slightly smaller point size for high density
                             gl_Position = projectionMatrix * mvPosition;
                         }
                     `,
@@ -224,7 +222,6 @@
                         varying vec3 vColor;
                         void main() {
                             if(length(gl_PointCoord - 0.5) > 0.5) discard;
-                            // NATURAL INTENSITY: No artificial boost
                             gl_FragColor = vec4(vColor, 1.0);
                         }
                     `,
@@ -272,7 +269,6 @@
         }
         globalUniforms.uMorphFactor.value = THREE.MathUtils.lerp(globalUniforms.uMorphFactor.value, isFist?1.0:0.0, 0.03);
 
-        // SPOTLIGHT EFFECT: Dims background slightly when she appears so it's scannable
         if(scene.background) {
             const intensity = 1.0 - (globalUniforms.uMorphFactor.value * 0.7); 
             scene.background.intensity = intensity;
